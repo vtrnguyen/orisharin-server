@@ -83,6 +83,7 @@ export class AuthService {
                 username: user.username,
                 fullName: user.fullName,
                 email: account.email,
+                role: account.role,
             } : null
         };
     }

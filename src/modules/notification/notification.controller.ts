@@ -1,7 +1,7 @@
 import { Controller, Get, Post as HttpPost, Body, Param, Patch } from '@nestjs/common';
 import { NotificationService } from './notification.service';
 
-@Controller('notifications')
+@Controller('api/v1/notifications')
 export class NotificationController {
     constructor(private readonly notificationService: NotificationService) { }
 

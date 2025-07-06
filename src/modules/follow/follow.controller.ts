@@ -1,7 +1,7 @@
 import { Controller, Get, Post as HttpPost, Delete, Param, Body } from '@nestjs/common';
 import { FollowService } from './follow.service';
 
-@Controller('follows')
+@Controller('api/v1/follows')
 export class FollowController {
     constructor(private readonly followService: FollowService) { }
 

@@ -1,7 +1,7 @@
 import { Controller, Get, Post as HttpPost, Body, Param } from '@nestjs/common';
 import { CommentService } from './comment.service';
 
-@Controller('comments')
+@Controller('api/v1/comments')
 export class CommentController {
     constructor(private readonly commentService: CommentService) { }
 

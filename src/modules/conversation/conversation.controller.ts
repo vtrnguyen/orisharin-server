@@ -1,7 +1,7 @@
 import { Controller, Get, Post as HttpPost, Body, Param } from '@nestjs/common';
 import { ConversationService } from './conversation.service';
 
-@Controller('conversations')
+@Controller('api/v1/conversations')
 export class ConversationController {
     constructor(private readonly conversationService: ConversationService) { }
 

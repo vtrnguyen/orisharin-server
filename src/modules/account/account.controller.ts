@@ -1,6 +1,6 @@
 import { Controller, Get } from "@nestjs/common";
 
-@Controller('accounts')
+@Controller('api/v1/accounts')
 export class AccountController {
     @Get("test")
     testRoute() {

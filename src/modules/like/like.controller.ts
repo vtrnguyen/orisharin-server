@@ -2,7 +2,7 @@ import { Controller, Get, Post as HttpPost, Delete, Body, Param, Query } from '@
 import { LikeService } from './like.service';
 import { Types } from 'mongoose';
 
-@Controller('likes')
+@Controller('api/v1/likes')
 export class LikeController {
     constructor(private readonly likeService: LikeService) { }
 

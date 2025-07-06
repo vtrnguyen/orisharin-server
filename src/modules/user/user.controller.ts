@@ -6,7 +6,7 @@ import { CurrentUser } from 'common/decorators/current-user.decorator';
 import { RolesGuard } from 'common/guards/role.guard';
 import { Roles } from 'common/decorators/roles.decorator';
 
-@Controller('users')
+@Controller('api/v1/users')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class UserController {
     constructor(private readonly userService: UserService) { }

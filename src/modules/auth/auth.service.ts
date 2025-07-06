@@ -32,6 +32,8 @@ export class AuthService {
         const account = await this.accountModel.create({
             email,
             password: hashed,
+            role: "user",
+            isActive: true,
         });
 
         const user = await this.userModel.create({
@@ -46,13 +48,15 @@ export class AuthService {
             accessToken: this.jwtService.sign({
                 id: account._id,
                 email: account.email,
-                userId: user._id
+                userId: user._id,
+                role: account.role,
             }),
             user: {
                 id: user._id,
                 username: user.username,
                 fullName: user.fullName,
-                email: account.email
+                email: account.email,
+                role: account.role,
             }
         };
     }
@@ -71,13 +75,14 @@ export class AuthService {
             accessToken: this.jwtService.sign({
                 id: account._id,
                 email: account.email,
-                userId: user?._id
+                userId: user?._id,
+                role: account.role,
             }),
             user: user ? {
                 id: user._id,
                 username: user.username,
                 fullName: user.fullName,
-                email: account.email
+                email: account.email,
             } : null
         };
     }

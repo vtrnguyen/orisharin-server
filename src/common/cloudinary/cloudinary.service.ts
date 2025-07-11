@@ -9,9 +9,16 @@ export class CloudinaryService {
     ) { }
 
     async uploadImage(file: Express.Multer.File): Promise<UploadApiResponse> {
+        let resourceType: 'image' | 'video' | 'auto' = 'auto';
+        if (file.mimetype.startsWith('image/')) resourceType = 'image';
+        else if (file.mimetype.startsWith('video/')) resourceType = 'video';
+
         return new Promise((resolve, reject) => {
             this.cloudinaryInstance.uploader.upload_stream(
-                { folder: 'orisharin' },
+                {
+                    folder: 'orisharin',
+                    resource_type: resourceType,
+                },
                 (error: any, result: any) => {
                     if (error) return reject(error);
                     resolve(result);

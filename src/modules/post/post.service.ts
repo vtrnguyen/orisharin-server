@@ -23,6 +23,7 @@ export class PostService {
         files?: Express.Multer.File[]
     ) {
         let mediaUrls: string[] = [];
+
         if (files && files.length > 0) {
             for (const file of files) {
                 const result = await this.cloudinaryService.uploadImage(file);

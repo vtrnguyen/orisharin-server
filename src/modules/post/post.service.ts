@@ -2,32 +2,42 @@ import { BadRequestException, Injectable } from "@nestjs/common";
 import { InjectModel } from "@nestjs/mongoose";
 import { Post, PostDocument } from "./schemas/post.schema/post.schema";
 import { Model, Types } from "mongoose";
+import { CloudinaryService } from "src/common/cloudinary/cloudinary.service";
 
 @Injectable()
 export class PostService {
     constructor(
         @InjectModel(Post.name)
         private readonly postModel: Model<PostDocument>,
+        private readonly cloudinaryService: CloudinaryService
     ) { }
 
     async create(
         authorId: string,
         body: {
             content: string;
-            mediaUrls?: string[];
             privacy?: 'public' | 'followers' | 'private';
             originalPostId?: string;
             sharedFromPostId?: string;
-        }
+        },
+        files?: Express.Multer.File[]
     ) {
-        if (!body.content && (!body.mediaUrls || body.mediaUrls.length === 0)) {
+        let mediaUrls: string[] = [];
+        if (files && files.length > 0) {
+            for (const file of files) {
+                const result = await this.cloudinaryService.uploadImage(file);
+                mediaUrls.push(result.secure_url);
+            }
+        }
+
+        if (!body.content && mediaUrls.length === 0) {
             throw new BadRequestException('Content or media is required');
         }
 
         const post = new this.postModel({
             authorId: new Types.ObjectId(authorId),
             content: body.content,
-            mediaUrls: body.mediaUrls || [],
+            mediaUrls,
             privacy: body.privacy || 'public',
             originalPostId: body.originalPostId ? new Types.ObjectId(body.originalPostId) : undefined,
             sharedFromPostId: body.sharedFromPostId ? new Types.ObjectId(body.sharedFromPostId) : undefined,

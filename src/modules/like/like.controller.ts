@@ -1,28 +1,36 @@
-import { Controller, Get, Post as HttpPost, Delete, Body, Param, Query } from '@nestjs/common';
+import { Controller, Get, Post as HttpPost, Delete, Body, Query, UseGuards } from '@nestjs/common';
 import { LikeService } from './like.service';
-import { Types } from 'mongoose';
+import { JwtAuthGuard } from 'common/guards/jwt-auth.guard';
+import { CurrentUser } from 'common/decorators/current-user.decorator';
+import { LikeTargetType } from 'src/common/enums/like-target-type.enum';
 
 @Controller('api/v1/likes')
+@UseGuards(JwtAuthGuard)
 export class LikeController {
     constructor(private readonly likeService: LikeService) { }
 
     @HttpPost()
-    async like(@Body() body: { userId: string; targetId: string; type: string }) {
-        const likeData = {
-            userId: new Types.ObjectId(body.userId),
-            targetId: new Types.ObjectId(body.targetId),
-            type: body.type
-        };
-        return this.likeService.like(likeData);
+    async like(
+        @CurrentUser() user: any,
+        @Body() body: { targetId: string; type: LikeTargetType }
+    ) {
+        return this.likeService.like(user.userId, body.targetId, body.type);
     }
 
     @Delete()
-    async unlike(@Body() body: { userId: string; targetId: string; type: string }) {
-        return this.likeService.unlike(body.userId, body.targetId, body.type);
+    async unlike(
+        @CurrentUser() user: any,
+        @Body() body: { targetId: string; type: LikeTargetType }
+    ) {
+        return this.likeService.unlike(user.userId, body.targetId, body.type);
     }
 
     @Get()
-    async getLikes(@Query('targetId') targetId: string, @Query('type') type: string) {
-        return this.likeService.getLikes(targetId, type);
+    async getLikes(
+        @Query('targetId') targetId: string,
+        @Query('type') type: LikeTargetType,
+        @CurrentUser() user: any
+    ) {
+        return this.likeService.getLikes(targetId, type, user?.userId);
     }
 }

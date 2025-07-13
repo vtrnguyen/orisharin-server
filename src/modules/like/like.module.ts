@@ -5,6 +5,7 @@ import { LikeController } from './like.controller';
 import { LikeService } from './like.service';
 import { Post, PostSchema } from '../post/schemas/post.schema/post.schema';
 import { Comment, CommentSchema } from '../comment/schemas/comment.schema/comment.schema';
+import { NotificationModule } from '../notification/notification.module';
 
 @Module({
     imports: [
@@ -13,6 +14,7 @@ import { Comment, CommentSchema } from '../comment/schemas/comment.schema/commen
             { name: Post.name, schema: PostSchema },
             { name: Comment.name, schema: CommentSchema },
         ]),
+        NotificationModule,
     ],
     controllers: [LikeController],
     providers: [LikeService],

@@ -3,12 +3,15 @@ import { InjectModel } from "@nestjs/mongoose";
 import { Post, PostDocument } from "./schemas/post.schema/post.schema";
 import { Model, Types } from "mongoose";
 import { CloudinaryService } from "src/common/cloudinary/cloudinary.service";
+import { User, UserDocument } from "../user/schemas/user.schema/user.schema";
 
 @Injectable()
 export class PostService {
     constructor(
         @InjectModel(Post.name)
         private readonly postModel: Model<PostDocument>,
+        @InjectModel(User.name)
+        private readonly userModel: Model<UserDocument>,
         private readonly cloudinaryService: CloudinaryService
     ) { }
 
@@ -76,7 +79,34 @@ export class PostService {
         });
     }
 
-    async findById(id: string) {
-        return this.postModel.findById(id).exec();
+    async findByUsername(username: string) {
+        const user = await this.userModel.findOne({ username }).exec();
+        if (!user) return [];
+        const posts = await this.postModel
+            .find({ authorId: user._id })
+            .populate("authorId")
+            .sort({ createdAt: -1 })
+            .exec();
+
+        return posts.map(post => {
+            const userObj = post.authorId && typeof post.authorId === 'object'
+                ? {
+                    id: (post.authorId as any)._id,
+                    username: (post.authorId as any).username,
+                    fullName: (post.authorId as any).fullName,
+                    avatarUrl: (post.authorId as any).avatarUrl,
+                }
+                : null;
+
+            const { authorId, ...postData } = post.toObject();
+
+            return {
+                post: {
+                    ...postData,
+                    id: post._id,
+                },
+                author: userObj,
+            };
+        });
     }
 }

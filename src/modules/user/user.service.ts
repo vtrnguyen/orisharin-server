@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { User, UserDocument } from './schemas/user.schema/user.schema';
+import { ApiResponseDto } from 'src/common/dtos/api-response.dto';
 
 @Injectable()
 export class UserService {
@@ -11,18 +12,21 @@ export class UserService {
     ) { }
 
     async findAll() {
-        return this.userModel.find().exec();
+        const users = await this.userModel.find().exec();
+        const message = users.length > 0 ? "get all users successfully" : "no users found";
+        return new ApiResponseDto(users, message, true);
     }
 
-    async findById(id: string) {
-        return this.userModel.findById(id).exec();
-    }
+    async findByIdOrUsername(query: string) {
+        const isObjectId = /^[0-9a-fA-F]{24}$/.test(query);
+        let user;
 
-    async findByCustomId(customId: string) {
-        return this.userModel.findOne({ customId }).exec();
-    }
+        if (isObjectId) user = await this.userModel.findById(query).exec();
+        else user = await this.userModel.findOne({ username: query }).exec();
 
-    async update(id: string, updateData: Partial<User>) {
-        return this.userModel.findByIdAndUpdate(id, updateData, { new: true }).exec();
+        const success = !!user;
+        const message = user ? "get user info successfully" : "user not found";
+
+        return new ApiResponseDto(user, message, success);
     }
 }

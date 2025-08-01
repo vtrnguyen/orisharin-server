@@ -4,12 +4,15 @@ import { Model } from 'mongoose';
 import { User, UserDocument } from './schemas/user.schema/user.schema';
 import { ApiResponseDto } from 'src/common/dtos/api-response.dto';
 import { CloudinaryService } from 'src/common/cloudinary/cloudinary.service';
+import { Follow, FollowDocument } from '../follow/schemas/follow.schema/follow.schema';
 
 @Injectable()
 export class UserService {
     constructor(
         @InjectModel(User.name)
         private readonly userModel: Model<UserDocument>,
+        @InjectModel(Follow.name)
+        private readonly followModel: Model<FollowDocument>,
         private readonly cloudinaryService: CloudinaryService,
     ) { }
 
@@ -26,10 +29,32 @@ export class UserService {
         if (isObjectId) user = await this.userModel.findById(query).exec();
         else user = await this.userModel.findOne({ username: query }).exec();
 
+        let followings: any[] = [];
+        if (user) {
+            followings = await this.followModel
+                .find({ followerId: user._id })
+                .limit(3)
+                .populate('followingId')
+                .exec();
+            followings = followings
+                .map(f => f.followingId)
+                .filter(Boolean)
+                .map(u => ({
+                    id: u._id,
+                    username: u.username,
+                    fullName: u.fullName,
+                    avatarUrl: u.avatarUrl,
+                }));
+        }
+
         const success = !!user;
         const message = user ? "get user info successfully" : "user not found";
 
-        return new ApiResponseDto(user, message, success);
+        return new ApiResponseDto(
+            { user, followings },
+            message,
+            success
+        );
     }
 
     async updateProfile(
@@ -39,6 +64,20 @@ export class UserService {
     ) {
         let avatarUrl: string | undefined;
         if (avatar) {
+            const currentUser = await this.userModel.findById(userId).exec();
+            if (currentUser?.avatarUrl) {
+                const matches = currentUser.avatarUrl.match(/\/([^\/]+)\.(jpg|jpeg|png|gif|webp|bmp|tiff|ico|svg|jfif|avif|heic|heif|raw|pdf|mp4|mov|webm|mkv|avi|flv|wmv|m3u8|ts|3gp|ogg|mp3|wav|aac|flac|opus|amr|m4a|m4v|mpg|mpeg|ogv|3g2|asf|m2ts|mts|mxf|vob|rm|rmvb|f4v|f4p|f4a|f4b)$/i);
+
+                if (matches && matches[1]) {
+                    const publicId = `orisharin/${matches[1]}`;
+                    try {
+                        await this.cloudinaryService.deleteImage(publicId);
+                    } catch (e) {
+                        console.error(`Failed to delete old avatar: ${e.message}`);
+                    }
+                }
+            }
+
             const result = await this.cloudinaryService.uploadImage(avatar);
             avatarUrl = result.secure_url;
         }
@@ -46,7 +85,15 @@ export class UserService {
         const updateData: any = {};
         if (avatarUrl) updateData.avatarUrl = avatarUrl;
         if (body.bio !== undefined) updateData.bio = body.bio;
-        if (body.websiteLinks !== undefined) updateData.websiteLinks = body.websiteLinks;
+        if (body.websiteLinks !== undefined) {
+            if (Array.isArray(body.websiteLinks)) {
+                updateData.websiteLinks = body.websiteLinks;
+            } else if (typeof body.websiteLinks === "string" && body.websiteLinks !== "") {
+                updateData.websiteLinks = [body.websiteLinks];
+            } else {
+                updateData.websiteLinks = [];
+            }
+        }
 
         const user = await this.userModel.findByIdAndUpdate(
             userId,

@@ -30,6 +30,6 @@ export class UserController {
         @Body() body: { bio?: string; websiteLinks?: string[] },
         @CurrentUser() user: any
     ) {
-        return this.userService.updateProfile(user.id, body, avatar);
+        return this.userService.updateProfile(user.userId, body, avatar);
     }
 }

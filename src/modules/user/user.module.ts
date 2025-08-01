@@ -4,12 +4,14 @@ import { User, UserSchema } from './schemas/user.schema/user.schema';
 import { UserController } from './user.controller';
 import { UserService } from './user.service';
 import { IdValidationPipe } from 'common/pipes/id-validation.pipe';
+import { CloudinaryModule } from 'src/common/cloudinary/cloudinary.module';
 
 @Module({
     imports: [
         MongooseModule.forFeature([
             { name: User.name, schema: UserSchema },
         ]),
+        CloudinaryModule,
     ],
     controllers: [UserController],
     providers: [UserService, IdValidationPipe],

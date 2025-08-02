@@ -1,6 +1,7 @@
 import { Controller, Get, Post as HttpPost, Delete, Param, Body, UseGuards } from '@nestjs/common';
 import { FollowService } from './follow.service';
 import { AuthGuard } from '@nestjs/passport';
+import { CurrentUser } from 'common/decorators/current-user.decorator';
 
 @UseGuards(AuthGuard('jwt'))
 @Controller('api/v1/follows')
@@ -19,13 +20,20 @@ export class FollowController {
     }
 
     @Get('followers/:userId')
-    async getFollowers(@Param('userId') userId: string) {
-        return this.followService.getFollowers(userId);
+    async getFollowers(
+        @Param('userId') userId: string,
+        @CurrentUser() user: any
+    ) {
+        console.log('User ID:', userId, 'Current User:', user);
+        return this.followService.getFollowers(userId, user.id);
     }
 
     @Get('following/:userId')
-    async getFollowing(@Param('userId') userId: string) {
-        return this.followService.getFollowing(userId);
+    async getFollowing(
+        @Param('userId') userId: string,
+        @CurrentUser() user: any
+    ) {
+        return this.followService.getFollowing(userId, user.id);
     }
 
     @Get('check/:followerId/:followingId')

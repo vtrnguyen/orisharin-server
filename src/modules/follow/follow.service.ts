@@ -55,12 +55,72 @@ export class FollowService {
         }
     }
 
-    async getFollowers(userId: string) {
-        return this.followModel.find({ followingId: userId }).exec();
+    async getFollowers(userId: string, currentUserId?: string) {
+        try {
+            // find all users who follow the given userId
+            const followers = await this.followModel
+                .find({ followingId: userId })
+                .populate('followerId')
+                .exec();
+
+            // if currentUserId is provided, get the set of users that current user is following
+            let followingSet = new Set<string>();
+            if (currentUserId) {
+                const followings = await this.followModel.find({ followerId: currentUserId }).exec();
+                followingSet = new Set(followings.map(f => f.followingId.toString()));
+            }
+
+            // map follower user info and check if current user is following them
+            const data = followers
+                .map(f => f.followerId)
+                .filter(Boolean)
+                .map((u: any) => ({
+                    id: u._id,
+                    username: u.username,
+                    fullName: u.fullName,
+                    avatarUrl: u.avatarUrl,
+                    // isFollowed: true if current user is following this user
+                    isFollowed: currentUserId ? followingSet.has(u._id.toString()) : undefined,
+                }));
+
+            return new ApiResponseDto(data, "get followers successfully", true);
+        } catch (error: any) {
+            return new ApiResponseDto([], error.message, false, "get followers failed");
+        }
     }
 
-    async getFollowing(userId: string) {
-        return this.followModel.find({ followerId: userId }).exec();
+    async getFollowing(userId: string, currentUserId?: string) {
+        try {
+            // find all users that the given userId is following
+            const followings = await this.followModel
+                .find({ followerId: userId })
+                .populate('followingId')
+                .exec();
+
+            // if currentUserId is provided, get the set of users that current user is following
+            let followingSet = new Set<string>();
+            if (currentUserId) {
+                const followingsOfCurrent = await this.followModel.find({ followerId: currentUserId }).exec();
+                followingSet = new Set(followingsOfCurrent.map(f => f.followingId.toString()));
+            }
+
+            // map following user info and check if current user is following them
+            const data = followings
+                .map(f => f.followingId)
+                .filter(Boolean)
+                .map((u: any) => ({
+                    id: u._id,
+                    username: u.username,
+                    fullName: u.fullName,
+                    avatarUrl: u.avatarUrl,
+                    // isFollowed: true if current user is following this user
+                    isFollowed: currentUserId ? followingSet.has(u._id.toString()) : undefined,
+                }));
+
+            return new ApiResponseDto(data, "get following successfully", true);
+        } catch (error: any) {
+            return new ApiResponseDto([], error.message, false, "get following failed");
+        }
     }
 
     async isFollowing(followerId: string, followingId: string) {

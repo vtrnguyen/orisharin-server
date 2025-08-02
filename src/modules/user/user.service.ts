@@ -106,4 +106,26 @@ export class UserService {
 
         return new ApiResponseDto(user, message, success);
     }
+
+    async introduceUser(query: string) {
+        const isObjectId = /^[0-9a-fA-F]{24}$/.test(query);
+        let user;
+        if (isObjectId) {
+            user = await this.userModel.findById(query).exec();
+        } else {
+            user = await this.userModel.findOne({ username: query }).exec();
+        }
+
+        if (!user) {
+            return new ApiResponseDto(null, "User not found", false);
+        }
+
+        const summary = {
+            username: user.username,
+            fullName: user.fullName,
+            avatarUrl: user.avatarUrl,
+            createdAt: user.createdAt,
+        }
+        return new ApiResponseDto(summary, "Get user summary successfully", true);
+    }
 }

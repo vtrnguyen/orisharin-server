@@ -23,6 +23,11 @@ export class UserController {
         return this.userService.findByIdOrUsername(query);
     }
 
+    @Get("introduce/:query")
+    async introduceUser(@Param('query') query: string) {
+        return this.userService.introduceUser(query);
+    }
+
     @Patch("profile")
     @UseInterceptors(FileInterceptor("avatar"))
     async updateProfile(

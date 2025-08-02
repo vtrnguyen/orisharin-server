@@ -24,8 +24,7 @@ export class FollowController {
         @Param('userId') userId: string,
         @CurrentUser() user: any
     ) {
-        console.log('User ID:', userId, 'Current User:', user);
-        return this.followService.getFollowers(userId, user.id);
+        return this.followService.getFollowers(userId, user.userId);
     }
 
     @Get('following/:userId')
@@ -33,7 +32,7 @@ export class FollowController {
         @Param('userId') userId: string,
         @CurrentUser() user: any
     ) {
-        return this.followService.getFollowing(userId, user.id);
+        return this.followService.getFollowing(userId, user.userId);
     }
 
     @Get('check/:followerId/:followingId')

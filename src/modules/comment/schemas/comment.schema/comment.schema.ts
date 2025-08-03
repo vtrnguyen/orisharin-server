@@ -20,6 +20,9 @@ export class Comment {
     @Prop({ default: 0 })
     likesCount: number;
 
+    @Prop({ default: 0 })
+    commentCount: number;
+
     @Prop({ default: false })
     isDeleted: boolean;
 

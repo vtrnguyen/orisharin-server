@@ -4,11 +4,13 @@ import { Comment, CommentSchema } from './schemas/comment.schema/comment.schema'
 import { CommentController } from './comment.controller';
 import { CommentService } from './comment.service';
 import { CloudinaryModule } from 'src/common/cloudinary/cloudinary.module';
+import { Post, PostSchema } from '../post/schemas/post.schema/post.schema';
 
 @Module({
     imports: [
         MongooseModule.forFeature([
             { name: Comment.name, schema: CommentSchema },
+            { name: Post.name, schema: PostSchema },
         ]),
         CloudinaryModule,
     ],

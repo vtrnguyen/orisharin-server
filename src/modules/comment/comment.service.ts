@@ -4,12 +4,15 @@ import { Model } from 'mongoose';
 import { Comment, CommentDocument } from './schemas/comment.schema/comment.schema';
 import { ApiResponseDto } from 'src/common/dtos/api-response.dto';
 import { CloudinaryService } from 'src/common/cloudinary/cloudinary.service';
+import { Post, PostDocument } from '../post/schemas/post.schema/post.schema';
 
 @Injectable()
 export class CommentService {
     constructor(
         @InjectModel(Comment.name)
         private readonly commentModel: Model<CommentDocument>,
+        @InjectModel(Post.name)
+        private readonly postModel: Model<PostDocument>,
         private readonly cloudinaryService: CloudinaryService,
     ) { }
 
@@ -26,6 +29,21 @@ export class CommentService {
             }
             commentData.mediaUrls = mediaUrls;
             const comment = await this.commentModel.create(commentData);
+
+            // update the comment count in the parent comment or post
+            if (commentData.parentCommentId) {
+                await this.commentModel.findByIdAndUpdate(
+                    commentData.parentCommentId,
+                    { $inc: { commentCount: 1 } },
+                );
+            } else if (commentData.postId) {
+                // if the comment is on a post, increment the post's comment count
+                await this.postModel.findByIdAndUpdate(
+                    commentData.postId,
+                    { $inc: { commentsCount: 1 } }
+                );
+            }
+
             return new ApiResponseDto(comment, "Comment created successfully", true);
         } catch (error: any) {
             return new ApiResponseDto(null, error.message, false, "Comment failed");

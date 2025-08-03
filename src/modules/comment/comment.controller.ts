@@ -1,13 +1,18 @@
-import { Controller, Get, Post as HttpPost, Body, Param } from '@nestjs/common';
+import { Controller, Get, Post as HttpPost, Body, Param, UseInterceptors, UploadedFiles } from '@nestjs/common';
 import { CommentService } from './comment.service';
+import { FilesInterceptor } from '@nestjs/platform-express';
 
 @Controller('api/v1/comments')
 export class CommentController {
     constructor(private readonly commentService: CommentService) { }
 
     @HttpPost()
-    async create(@Body() body) {
-        return this.commentService.create(body);
+    @UseInterceptors(FilesInterceptor('files'))
+    async create(
+        @UploadedFiles() files: Express.Multer.File[],
+        @Body() body: any
+    ) {
+        return this.commentService.create(body, files);
     }
 
     @Get('post/:postId')

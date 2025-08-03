@@ -32,6 +32,12 @@ export class PostController {
         return this.postService.findAll();
     }
 
+    @Get(':id')
+    @UseGuards(JwtAuthGuard)
+    async getById(@Param('id') id: string) {
+        return this.postService.getPostDetail(id);
+    }
+
     @Get('user/:username')
     @UseGuards(JwtAuthGuard)
     async getByUsername(@Param('username') username: string) {

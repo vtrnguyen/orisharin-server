@@ -4,6 +4,8 @@ import { Post, PostDocument } from "./schemas/post.schema/post.schema";
 import { Model, Types } from "mongoose";
 import { CloudinaryService } from "src/common/cloudinary/cloudinary.service";
 import { User, UserDocument } from "../user/schemas/user.schema/user.schema";
+import { Comment, CommentDocument } from "../comment/schemas/comment.schema/comment.schema";
+import { ApiResponseDto } from "src/common/dtos/api-response.dto";
 
 @Injectable()
 export class PostService {
@@ -12,6 +14,8 @@ export class PostService {
         private readonly postModel: Model<PostDocument>,
         @InjectModel(User.name)
         private readonly userModel: Model<UserDocument>,
+        @InjectModel(Comment.name)
+        private readonly commentModel: Model<CommentDocument>,
         private readonly cloudinaryService: CloudinaryService
     ) { }
 
@@ -108,5 +112,55 @@ export class PostService {
                 author: userObj,
             };
         });
+    }
+
+    async getPostDetail(postId: string) {
+        try {
+            // get post info by id
+            const post = await this.postModel
+                .findById(postId)
+                .populate("authorId")
+                .exec();
+            if (!post) return new ApiResponseDto(null, "Get post detail failed", false, "Post not found!");
+
+            // get all post comments
+            const comments = await this.commentModel
+                .find({ postId, parentCommentId: null })
+                .populate('authorId')
+                .lean()
+                .exec();
+
+            // get all replies for each comment
+            const allReplies = await this.commentModel
+                .find({ postId, parentCommentId: { $ne: null } })
+                .populate('authorId')
+                .lean()
+                .exec();
+
+            // map comments with their replies
+            const commentWithReplies = comments.map(comment => ({
+                ...comment,
+                author: comment.authorId,
+                replies: allReplies
+                    .filter(r => r.parentCommentId?.toString() === comment._id.toString())
+                    .map(reply => ({
+                        ...reply,
+                        author: reply.authorId,
+                    })),
+            }))
+
+            const data = {
+                post: {
+                    ...post.toObject(),
+                    id: post._id,
+                    author: post.authorId,
+                },
+                comments: commentWithReplies,
+            };
+
+            return new ApiResponseDto(data, "Get post detail successfully", true);
+        } catch (error: any) {
+            return new ApiResponseDto(null, error.message, false, "An error occurred while fetching post details.");
+        }
     }
 }

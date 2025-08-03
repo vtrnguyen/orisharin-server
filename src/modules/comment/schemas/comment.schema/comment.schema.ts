@@ -22,6 +22,9 @@ export class Comment {
 
     @Prop({ default: false })
     isDeleted: boolean;
+
+    @Prop({ type: [String], default: [] })
+    mediaUrls: string[];
 }
 
 export const CommentSchema = SchemaFactory.createForClass(Comment);

@@ -5,6 +5,7 @@ import { User } from "../user/schemas/user.schema/user.schema";
 import { Model } from "mongoose";
 import { JwtService } from "@nestjs/jwt";
 import * as bcrypt from "bcryptjs";
+import { CloudinaryService } from "src/common/cloudinary/cloudinary.service";
 
 @Injectable()
 export class AuthService {
@@ -14,6 +15,7 @@ export class AuthService {
         @InjectModel(User.name)
         private userModel: Model<User>,
         private jwtService: JwtService,
+        private cloudinaryService: CloudinaryService,
     ) { }
 
     async register({ email, password, fullName, username }: any) {
@@ -36,11 +38,25 @@ export class AuthService {
             isActive: true,
         });
 
+        const fs = require('fs');
+        const path = require('path');
+        const defaultAvatarPath = require('path').resolve(process.cwd(), 'src/public/images/orisharin_default_avatar.png');
+        const defaultAvatarBuffer = require('fs').readFileSync(defaultAvatarPath);
+        const defaultAvatarFile = {
+            buffer: defaultAvatarBuffer,
+            mimetype: 'image/png',
+            originalname: 'orisharin_default_avatar.png',
+        } as Express.Multer.File;
+
+        const result = await this.cloudinaryService.uploadImage(defaultAvatarFile);
+        const avatarUrl = result.secure_url;
+
         const user = await this.userModel.create({
             accountId: account._id,
             username,
             fullName,
             displayName: fullName,
+            avatarUrl,
         });
 
         return {

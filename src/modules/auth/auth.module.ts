@@ -8,6 +8,7 @@ import { AuthController } from './auth.controller';
 import { Account, AccountSchema } from '../account/schemas/account.schema/account.schema';
 import { User, UserSchema } from '../user/schemas/user.schema/user.schema';
 import { JwtStrategy } from 'common/strategies/jwt.strategy';
+import { CloudinaryModule } from 'src/common/cloudinary/cloudinary.module';
 
 @Module({
     imports: [
@@ -27,6 +28,7 @@ import { JwtStrategy } from 'common/strategies/jwt.strategy';
             }),
             inject: [ConfigService],
         }),
+        CloudinaryModule,
     ],
     controllers: [AuthController],
     providers: [AuthService, JwtStrategy],

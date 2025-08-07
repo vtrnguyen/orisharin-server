@@ -10,7 +10,6 @@ export class FollowController {
 
     @HttpPost()
     async follow(@Body() body: { followerId: string; followingId: string }) {
-        console.log('Body:', body);
         return this.followService.follow(body.followerId, body.followingId);
     }
 

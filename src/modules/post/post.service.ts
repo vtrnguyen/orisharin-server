@@ -83,6 +83,56 @@ export class PostService {
         });
     }
 
+    async findAllPaginated(page = 1, limit = 10) {
+        try {
+            const skip = (page - 1) * limit;
+            const posts = await this.postModel
+                .find()
+                .populate("authorId")
+                .sort({ createdAt: -1 })
+                .skip(skip)
+                .limit(limit)
+                .exec();
+
+            const total = await this.postModel.countDocuments();
+
+            const data = posts.map(post => {
+                const user = post.authorId && typeof post.authorId === 'object'
+                    ? {
+                        id: (post.authorId as any)._id,
+                        username: (post.authorId as any).username,
+                        fullName: (post.authorId as any).fullName,
+                        avatarUrl: (post.authorId as any).avatarUrl,
+                    }
+                    : null;
+
+                const { authorId, ...postData } = post.toObject();
+
+                return {
+                    post: {
+                        ...postData,
+                        id: post._id,
+                    },
+                    author: user,
+                };
+            });
+
+            return new ApiResponseDto(
+                {
+                    data,
+                    total,
+                    page,
+                    limit,
+                    hasMore: page * limit < total
+                },
+                "Get posts successfully",
+                true
+            );
+        } catch (error: any) {
+            return new ApiResponseDto(null, error.message, false, "Get posts failed");
+        }
+    }
+
     async findByUsername(username: string) {
         const user = await this.userModel.findOne({ username }).exec();
         if (!user) return [];

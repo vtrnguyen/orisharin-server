@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, UploadedFiles, UseGuards, UseInterceptors } from "@nestjs/common";
+import { Body, Controller, Get, Param, Post, Query, UploadedFiles, UseGuards, UseInterceptors } from "@nestjs/common";
 import { PostService } from "./post.service";
 import { JwtAuthGuard } from "common/guards/jwt-auth.guard";
 import { CurrentUser } from "common/decorators/current-user.decorator";
@@ -28,8 +28,8 @@ export class PostController {
 
     @Get()
     @UseGuards(JwtAuthGuard)
-    async getAll() {
-        return this.postService.findAll();
+    async getAll(@Query('page') page: number = 1, @Query('limit') limit: number = 10) {
+        return this.postService.findAllPaginated(Number(page), Number(limit));
     }
 
     @Get(':id')

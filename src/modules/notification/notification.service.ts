@@ -3,6 +3,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Notification, NotificationDocument } from './schemas/notification.schema/notification.schema';
 import { ppid } from 'process';
+import { ApiResponseDto } from 'src/common/dtos/api-response.dto';
 
 @Injectable()
 export class NotificationService {
@@ -49,5 +50,27 @@ export class NotificationService {
             { recipientId: new Types.ObjectId(userId), isRead: false },
             { $set: { isRead: true } },
         ).exec();
+    }
+
+    async deleteById(id: string) {
+        try {
+            const result = await this.notificationModel.findByIdAndDelete(id).exec();
+            const success = !!result;
+            const message = success ? "Delete notification successfully" : "Notification not found";
+            return new ApiResponseDto(result, message, success);
+        } catch (error: any) {
+            return new ApiResponseDto(null, error.message, false, "Delete notification failed");
+        }
+    }
+
+    async deleteAllByUserId(userId: string) {
+        try {
+            const result = await this.notificationModel.deleteMany({
+                recipientId: new Types.ObjectId(userId)
+            }).exec();
+            return new ApiResponseDto(result, "Delete all notifications successfully");
+        } catch (error: any) {
+            return new ApiResponseDto(null, error.message, false, "Delete all notifications failed");
+        }
     }
 }

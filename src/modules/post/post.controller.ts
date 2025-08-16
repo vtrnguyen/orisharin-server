@@ -40,8 +40,12 @@ export class PostController {
 
     @Get('user/:username')
     @UseGuards(JwtAuthGuard)
-    async getByUsername(@Param('username') username: string) {
-        return this.postService.findByUsername(username);
+    async getByUsername(
+        @Param('username') username: string,
+        @Query('page') page: number = 1,
+        @Query('limit') limit: number = 10
+    ) {
+        return this.postService.findAllByUserPaginated(username, Number(page), Number(limit));
     }
 }
 

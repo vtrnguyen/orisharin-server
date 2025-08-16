@@ -135,6 +135,62 @@ export class PostService {
         });
     }
 
+    async findAllByUserPaginated(username: string, page = 1, limit = 10) {
+        try {
+            const user = await this.userModel.findOne({ username }).exec();
+
+            if (!user) {
+                return new ApiResponseDto(null, "User not found", false);
+            }
+
+            const skip = (page - 1) * limit;
+            const posts = await this.postModel
+                .find({ authorId: user._id, isDeleted: false })
+                .populate("authorId")
+                .sort({ createdAt: -1 })
+                .skip(skip)
+                .limit(limit)
+                .exec();
+
+            const total = await this.postModel.countDocuments({ authorId: user._id, isDeleted: false });
+
+            const data = posts.map(post => {
+                const userObj = post.authorId && typeof post.authorId === 'object'
+                    ? {
+                        id: (post.authorId as any)._id,
+                        username: (post.authorId as any).username,
+                        fullName: (post.authorId as any).fullName,
+                        avatarUrl: (post.authorId as any).avatarUrl,
+                    }
+                    : null;
+
+                const { authorId, ...postData } = post.toObject();
+
+                return {
+                    post: {
+                        ...postData,
+                        id: post._id,
+                    },
+                    author: userObj,
+                };
+            });
+
+            return new ApiResponseDto(
+                {
+                    data,
+                    total,
+                    page,
+                    limit,
+                    hasMore: page * limit < total
+                },
+                "Get user's posts successfully",
+                true
+            );
+        } catch (error: any) {
+            return new ApiResponseDto(null, error.message, false, "Get user's posts failed");
+        }
+    }
+
     async getPostDetail(postId: string) {
         try {
             // get post info by id

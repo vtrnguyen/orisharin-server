@@ -36,7 +36,9 @@ export class CommentService {
                     commentData.parentCommentId,
                     { $inc: { commentCount: 1 } },
                 );
-            } else if (commentData.postId) {
+            }
+
+            if (commentData.postId) {
                 // if the comment is on a post, increment the post's comment count
                 await this.postModel.findByIdAndUpdate(
                     commentData.postId,

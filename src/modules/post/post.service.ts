@@ -54,35 +54,6 @@ export class PostService {
         return post.save();
     }
 
-    async findAll() {
-        const posts = await this.postModel
-            .find()
-            .populate("authorId")
-            .sort({ createdAt: -1 })
-            .exec();
-
-        return posts.map(post => {
-            const user = post.authorId && typeof post.authorId === 'object'
-                ? {
-                    id: (post.authorId as any)._id,
-                    username: (post.authorId as any).username,
-                    fullName: (post.authorId as any).fullName,
-                    avatarUrl: (post.authorId as any).avatarUrl,
-                }
-                : null;
-
-            const { authorId, ...postData } = post.toObject();
-
-            return {
-                post: {
-                    ...postData,
-                    id: post._id,
-                },
-                author: user,
-            };
-        });
-    }
-
     async findAllPaginated(page = 1, limit = 10) {
         try {
             const skip = (page - 1) * limit;
@@ -199,11 +170,14 @@ export class PostService {
                     })),
             }))
 
+            // map post, replace author id to author
+            const { authorId, ...postData } = post.toObject();
+
             const data = {
                 post: {
-                    ...post.toObject(),
+                    ...postData,
                     id: post._id,
-                    author: post.authorId,
+                    author: authorId,
                 },
                 comments: commentWithReplies,
             };

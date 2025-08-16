@@ -46,7 +46,13 @@ export class CommentService {
                 );
             }
 
-            return new ApiResponseDto(comment, "Comment created successfully", true);
+            // populate the author information
+            const populatedComment = await this.commentModel
+                .findById(comment._id)
+                .populate('authorId')
+                .exec();
+
+            return new ApiResponseDto(populatedComment, "Comment created successfully", true);
         } catch (error: any) {
             return new ApiResponseDto(null, error.message, false, "Comment failed");
         }

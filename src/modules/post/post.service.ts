@@ -54,18 +54,62 @@ export class PostService {
         return post.save();
     }
 
+    async delete(postId: string, currentUserId: string) {
+        try {
+            const post = await this.postModel.findById(postId).exec();
+            if (!post) return new ApiResponseDto(null, "Post not found", false, "Post not found");
+
+            // only author can delete
+            if (post.authorId.toString() !== currentUserId) return new ApiResponseDto(null, "Unauthorized", false, "You are not the author of this post");
+
+            // soft delete
+            const updated = await this.postModel
+                .findByIdAndUpdate(postId, { isDeleted: true }, { new: true })
+                .populate("authorId")
+                .exec();
+
+            if (!updated) {
+                return new ApiResponseDto(null, "Post not found after update", false, "Post not found");
+            }
+
+            // map to consistent response shape (post + author)
+            const user = updated.authorId && typeof updated.authorId === 'object'
+                ? {
+                    id: (updated.authorId as any)._id,
+                    username: (updated.authorId as any).username,
+                    fullName: (updated.authorId as any).fullName,
+                    avatarUrl: (updated.authorId as any).avatarUrl,
+                }
+                : null;
+
+            const { authorId, ...postData } = updated.toObject();
+
+            const data = {
+                post: {
+                    ...postData,
+                    id: updated._id,
+                },
+                author: user,
+            };
+
+            return new ApiResponseDto(data, "Delete post successfully", true);
+        } catch (error: any) {
+            return new ApiResponseDto(null, error.message, false, "Delete post failed");
+        }
+    }
+
     async findAllPaginated(page = 1, limit = 10) {
         try {
             const skip = (page - 1) * limit;
             const posts = await this.postModel
-                .find()
+                .find({ isDeleted: false })
                 .populate("authorId")
                 .sort({ createdAt: -1 })
                 .skip(skip)
                 .limit(limit)
                 .exec();
 
-            const total = await this.postModel.countDocuments();
+            const total = await this.postModel.countDocuments({ isDeleted: false });
 
             const data = posts.map(post => {
                 const user = post.authorId && typeof post.authorId === 'object'
@@ -196,6 +240,7 @@ export class PostService {
             // get post info by id
             const post = await this.postModel
                 .findById(postId)
+                .where({ isDeleted: false })
                 .populate("authorId")
                 .exec();
             if (!post) return new ApiResponseDto(null, "Get post detail failed", false, "Post not found!");
@@ -233,8 +278,8 @@ export class PostService {
                 post: {
                     ...postData,
                     id: post._id,
-                    author: authorId,
                 },
+                author: authorId,
                 comments: commentWithReplies,
             };
 

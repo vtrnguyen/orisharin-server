@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query, UploadedFiles, UseGuards, UseInterceptors } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Post, Query, UploadedFiles, UseGuards, UseInterceptors } from "@nestjs/common";
 import { PostService } from "./post.service";
 import { JwtAuthGuard } from "common/guards/jwt-auth.guard";
 import { CurrentUser } from "common/decorators/current-user.decorator";
@@ -24,6 +24,15 @@ export class PostController {
         }
     ) {
         return this.postService.create(user.userId, body, files);
+    }
+
+    @Delete(":id")
+    @UseGuards(JwtAuthGuard)
+    async deletePost(
+        @Param("id") id: string,
+        @CurrentUser() user: any,
+    ) {
+        return this.postService.delete(id, user.userId);
     }
 
     @Get()

@@ -1,7 +1,8 @@
-import { Controller, Get, Post as HttpPost, Delete, Param, Body, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post as HttpPost, Delete, Param, Body, UseGuards, Query } from '@nestjs/common';
 import { FollowService } from './follow.service';
 import { AuthGuard } from '@nestjs/passport';
 import { CurrentUser } from 'common/decorators/current-user.decorator';
+import { JwtAuthGuard } from 'common/guards/jwt-auth.guard';
 
 @UseGuards(AuthGuard('jwt'))
 @Controller('api/v1/follows')
@@ -40,5 +41,16 @@ export class FollowController {
         @Param('followingId') followingId: string
     ) {
         return this.followService.isFollowing(followerId, followingId);
+    }
+
+    @Get('suggest')
+    @UseGuards(JwtAuthGuard)
+    async suggest(
+        @CurrentUser() user: any,
+        @Query('q') q?: string,
+        @Query('limit') limit = 10,
+        @Query('after') after?: string,
+    ) {
+        return this.followService.suggest(user?.userId, q, Number(limit), after);
     }
 }

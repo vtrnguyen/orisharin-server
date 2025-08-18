@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { Model, Types } from 'mongoose';
 import { Follow, FollowDocument } from './schemas/follow.schema/follow.schema';
 import { User, UserDocument } from '../user/schemas/user.schema/user.schema';
 import { ApiResponseDto } from 'src/common/dtos/api-response.dto';
@@ -130,5 +130,72 @@ export class FollowService {
             !!exists ? "Following" : "Not following",
             true
         );
+    }
+
+    async suggest(currentUserId?: string, q?: string, limit = 10, after?: string) {
+        try {
+            // build following set of current user (if provided)
+            let followingSet = new Set<string>();
+            if (currentUserId) {
+                const followings = await this.followModel.find({ followerId: currentUserId }).exec();
+                followingSet = new Set(followings.map(f => f.followingId.toString()));
+            }
+
+            // exclude list: current user + users already followed
+            const excludeIds = new Set<string>();
+            if (currentUserId) excludeIds.add(currentUserId);
+            for (const id of followingSet) excludeIds.add(id);
+
+            // build query to find candidate users not in exclude list
+            const query: any = { _id: { $nin: Array.from(excludeIds) } };
+
+            // search by username or fullName if q provided
+            if (q && q.trim()) {
+                const re = new RegExp(q.trim(), 'i');
+                query.$or = [{ username: re }, { fullName: re }];
+            }
+
+            // cursor: if 'after' provided and valid ObjectId, fetch docs with _id < after (newest-first)
+            if (after) {
+                try {
+                    query._id.$lt = new Types.ObjectId(after);
+                } catch (e) {
+                    // invalid after -> ignore cursor
+                }
+            }
+
+            const realLimit = Math.max(1, Math.min(Number(limit) || 10, 100));
+
+            // select only needed fields and use lean for performance
+            const users = await this.userModel
+                .find(query)
+                .select('username fullName avatarUrl bio')
+                .sort({ _id: -1 })
+                .limit(realLimit + 1)
+                .lean()
+                .exec();
+
+            const hasMore = users.length > realLimit;
+            const slice = users.slice(0, realLimit);
+
+            const data = slice.map((u: any) => ({
+                id: u._id,
+                username: u.username,
+                fullName: u.fullName,
+                avatarUrl: u.avatarUrl,
+                bio: u.bio,
+                isFollowed: currentUserId ? followingSet.has(u._id.toString()) : false,
+            }));
+
+            const nextCursor = hasMore ? slice[slice.length - 1]._id.toString() : null;
+
+            return new ApiResponseDto(
+                { data, nextCursor, hasMore },
+                "Get suggest users successfully",
+                true
+            );
+        } catch (error: any) {
+            return new ApiResponseDto([], error.message, false, "Get suggest users failed");
+        }
     }
 }

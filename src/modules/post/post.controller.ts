@@ -41,10 +41,13 @@ export class PostController {
         return this.postService.findAllPaginated(Number(page), Number(limit));
     }
 
-    @Get(':id')
+    @Get("user/:username/post/:id")
     @UseGuards(JwtAuthGuard)
-    async getById(@Param('id') id: string) {
-        return this.postService.getPostDetail(id);
+    async getPostDetail(
+        @Param("username") username: string,
+        @Param("id") id: string,
+    ) {
+        return this.postService.getPostDetail(username, id);
     }
 
     @Get('user/:username')

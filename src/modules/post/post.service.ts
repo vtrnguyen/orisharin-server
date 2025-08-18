@@ -235,31 +235,36 @@ export class PostService {
         }
     }
 
-    async getPostDetail(postId: string) {
+    async getPostDetail(username: string, postId: string) {
         try {
-            // get post info by id
+            // find user by username
+            const user = await this.userModel.findOne({
+                username: username
+            }).exec();
+            if (!user) return new ApiResponseDto(null, "User not found", false, "User not found");
+
             const post = await this.postModel
-                .findById(postId)
-                .where({ isDeleted: false })
+                .findOne({
+                    _id: postId,
+                    authorId: user._id,
+                    isDeleted: false,
+                })
                 .populate("authorId")
                 .exec();
-            if (!post) return new ApiResponseDto(null, "Get post detail failed", false, "Post not found!");
+            if (!post) return new ApiResponseDto(null, "Post not found", false, "Post not found");
 
-            // get all post comments
+            // get all post comments and replies
             const comments = await this.commentModel
                 .find({ postId, parentCommentId: null })
-                .populate('authorId')
+                .populate("authorId")
                 .lean()
                 .exec();
-
-            // get all replies for each comment
             const allReplies = await this.commentModel
                 .find({ postId, parentCommentId: { $ne: null } })
-                .populate('authorId')
+                .populate("authorId")
                 .lean()
                 .exec();
 
-            // map comments with their replies
             const commentWithReplies = comments.map(comment => ({
                 ...comment,
                 author: comment.authorId,
@@ -269,9 +274,8 @@ export class PostService {
                         ...reply,
                         author: reply.authorId,
                     })),
-            }))
+            }));
 
-            // map post, replace author id to author
             const { authorId, ...postData } = post.toObject();
 
             const data = {

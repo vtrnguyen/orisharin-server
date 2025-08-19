@@ -21,7 +21,7 @@ export class Comment {
     likesCount: number;
 
     @Prop({ default: 0 })
-    commentCount: number;
+    commentsCount: number;
 
     @Prop({ default: false })
     isDeleted: boolean;

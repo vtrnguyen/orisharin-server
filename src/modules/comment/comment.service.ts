@@ -34,7 +34,7 @@ export class CommentService {
             if (commentData.parentCommentId) {
                 await this.commentModel.findByIdAndUpdate(
                     commentData.parentCommentId,
-                    { $inc: { commentCount: 1 } },
+                    { $inc: { commentsCount: 1 } },
                 );
             }
 

@@ -50,6 +50,17 @@ export class PostController {
         return this.postService.getPostDetail(username, id);
     }
 
+    @Get("user/:username/deleted")
+    @UseGuards(JwtAuthGuard)
+    async getDeletedByUsername(
+        @Param("username") username: string,
+        @Query("page") page: number = 1,
+        @Query("limit") limit: number = 10,
+        @CurrentUser() user: any
+    ) {
+        return this.postService.findDeletedByUserPaginated(username, Number(page), Number(limit), user?.userId);
+    }
+
     @Get('user/:username')
     @UseGuards(JwtAuthGuard)
     async getByUsername(

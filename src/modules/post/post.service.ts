@@ -235,6 +235,63 @@ export class PostService {
         }
     }
 
+    async findDeletedByUserPaginated(username: string, page = 1, limit = 10, currentUserId?: string) {
+        try {
+            const user = await this.userModel.findOne({ username }).exec() as UserDocument | null;
+            if (!user) return new ApiResponseDto(null, "User not found", false, "User not found");
+
+            if (!currentUserId || currentUserId !== String(user._id)) {
+                return new ApiResponseDto(null, "Unauthorized", false, "You are not allowed to view this resource");
+            }
+
+            const skip = (page - 1) * limit;
+            const posts = await this.postModel
+                .find({ authorId: user._id, isDeleted: true })
+                .populate("authorId")
+                .sort({ updatedAt: -1 })
+                .skip(skip)
+                .limit(limit)
+                .exec();
+
+            const total = await this.postModel.countDocuments({ authorId: user._id, isDeleted: true });
+
+            const data = posts.map(post => {
+                const userObj = post.authorId && typeof post.authorId === 'object'
+                    ? {
+                        id: (post.authorId as any)._id,
+                        username: (post.authorId as any).username,
+                        fullName: (post.authorId as any).fullName,
+                        avatarUrl: (post.authorId as any).avatarUrl,
+                    }
+                    : null;
+
+                const { authorId, ...postData } = post.toObject();
+
+                return {
+                    post: {
+                        ...postData,
+                        id: post._id,
+                    },
+                    author: userObj,
+                };
+            });
+
+            return new ApiResponseDto(
+                {
+                    data,
+                    total,
+                    page,
+                    limit,
+                    hasMore: page * limit < total
+                },
+                "Get user's deleted posts successfully",
+                true
+            );
+        } catch (error: any) {
+            return new ApiResponseDto(null, error.message, false, "Get user's deleted posts failed");
+        }
+    }
+
     async getPostDetail(username: string, postId: string) {
         try {
             // find user by username

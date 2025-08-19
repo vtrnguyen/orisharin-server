@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from "@nestjs/common";
+import { BadRequestException, Inject, Injectable } from "@nestjs/common";
 import { InjectModel } from "@nestjs/mongoose";
 import { Post, PostDocument } from "./schemas/post.schema/post.schema";
 import { Model, Types } from "mongoose";
@@ -6,6 +6,8 @@ import { CloudinaryService } from "src/common/cloudinary/cloudinary.service";
 import { User, UserDocument } from "../user/schemas/user.schema/user.schema";
 import { Comment, CommentDocument } from "../comment/schemas/comment.schema/comment.schema";
 import { ApiResponseDto } from "src/common/dtos/api-response.dto";
+import { Like, LikeDocument } from "../like/schemas/like.schema/like.schema";
+import { LikeTargetType } from "src/common/enums/like-target-type.enum";
 
 @Injectable()
 export class PostService {
@@ -16,6 +18,8 @@ export class PostService {
         private readonly userModel: Model<UserDocument>,
         @InjectModel(Comment.name)
         private readonly commentModel: Model<CommentDocument>,
+        @InjectModel(Like.name)
+        private readonly likeModel: Model<LikeDocument>,
         private readonly cloudinaryService: CloudinaryService
     ) { }
 
@@ -347,6 +351,97 @@ export class PostService {
             return new ApiResponseDto(data, "Get post detail successfully", true);
         } catch (error: any) {
             return new ApiResponseDto(null, error.message, false, "An error occurred while fetching post details.");
+        }
+    }
+
+    async restore(postId: string, currentUserId: string) {
+        try {
+            const post = await this.postModel.findById(postId).exec();
+            if (!post) return new ApiResponseDto(null, "Post not found", false, "Post not found");
+
+            // only author can restore
+            if (post.authorId.toString() !== currentUserId) {
+                return new ApiResponseDto(null, "Unauthorized", false, "You are not the author of this post");
+            }
+
+            const updated = await this.postModel
+                .findByIdAndUpdate(postId, { isDeleted: false }, { new: true })
+                .exec();
+
+            if (!updated) return new ApiResponseDto(null, "Restore failed", false, "Post not found");
+
+            const user = updated.authorId && typeof updated.authorId === 'object'
+                ? {
+                    id: (updated.authorId as any)._id,
+                    username: (updated.authorId as any).username,
+                    fullName: (updated.authorId as any).fullName,
+                    avatarUrl: (updated.authorId as any).avatarUrl,
+                }
+                : null;
+
+            const { authorId, ...postData } = updated.toObject();
+
+            const data = {
+                post: {
+                    ...postData,
+                    id: updated._id,
+                },
+                author: user,
+            };
+
+            return new ApiResponseDto(data, "Restore post successfully", true);
+        } catch (error: any) {
+            return new ApiResponseDto(null, error.message, false, "Restore post successfully");
+        }
+    }
+
+    async permanentlyDelete(postId: string, currentUserId: string) {
+        try {
+            const post = await this.postModel.findById(postId).exec();
+            if (!post) return new ApiResponseDto(null, "Post not found", false, "Post not found");
+
+            // only author can permanently delete
+            if (post.authorId.toString() !== currentUserId) {
+                return new ApiResponseDto(null, "Unauthorized", false, "You are not the author of this post");
+            }
+
+            // delete media from media server if any
+            if (Array.isArray(post.mediaUrls) && post.mediaUrls.length > 0) {
+                const extractPublicId = (url: string): string | null => {
+                    try {
+                        const withoutQuery = url.split('?')[0];
+                        const idx = withoutQuery.indexOf('/upload/');
+                        if (idx === -1) return null;
+                        let after = withoutQuery.substring(idx + '/upload/'.length);
+                        after = after.replace(/^v\d+\//, '');
+                        // remove file extension
+                        after = after.replace(/\.[^/.]+$/, '');
+                        return after;
+                    } catch {
+                        return null;
+                    }
+                };
+
+                for (const url of post.mediaUrls) {
+                    const publicId = extractPublicId(url);
+                    if (publicId) {
+                        try {
+                            await this.cloudinaryService.deleteImage(publicId);
+                        } catch (err) {
+                        }
+                    }
+                }
+            }
+
+            // delete related comments
+            await this.commentModel.deleteMany({ postId: post._id }).exec();
+            // delete related likes
+            await this.likeModel.deleteMany({ targetId: post._id, type: LikeTargetType.Post }).exec();
+            await this.postModel.findByIdAndDelete(postId).exec();
+
+            return new ApiResponseDto(null, "Post permanently deleted", true);
+        } catch (error: any) {
+            return new ApiResponseDto(null, error.message, false, "Hard delete post failed");
         }
     }
 }

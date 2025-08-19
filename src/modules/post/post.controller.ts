@@ -70,5 +70,23 @@ export class PostController {
     ) {
         return this.postService.findAllByUserPaginated(username, Number(page), Number(limit));
     }
+
+    @Post(":id/restore")
+    @UseGuards(JwtAuthGuard)
+    async restorePost(
+        @Param("id") id: string,
+        @CurrentUser() user: any
+    ) {
+        return this.postService.restore(id, user.userId);
+    }
+
+    @Delete(":id/permanent")
+    @UseGuards(JwtAuthGuard)
+    async permanentDeletePost(
+        @Param("id") id: string,
+        @CurrentUser() user: any
+    ) {
+        return this.postService.permanentlyDelete(id, user.userId);
+    }
 }
 

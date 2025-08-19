@@ -26,20 +26,27 @@ export class LikeService {
         let recipientId: string | undefined;
 
         if (type === LikeTargetType.Post) {
-            const post = await this.postModel.findById(targetId);
+            const post = await this.postModel.findById(targetId).exec();
             if (!post) throw new NotFoundException('Post not found');
-            recipientId = post.authorId.toString();
+            recipientId = post.authorId?.toString();
         } else if (type === LikeTargetType.Comment) {
-            const comment = await this.commentModel.findById(targetId);
+            const comment = await this.commentModel.findById(targetId).exec();
             if (!comment) throw new NotFoundException('Comment not found');
-            recipientId = comment.authorId.toString();
+            recipientId = comment.authorId?.toString();
         } else {
             throw new BadRequestException('Invalid like type');
         }
 
-        const existed = await this.likeModel.findOne({ userId, targetId, targetType: type });
+        const existed = await this.likeModel.findOne({ userId, targetId, targetType: type }).exec();
         if (existed) throw new BadRequestException('Already liked');
+
         const like = await this.likeModel.create({ userId, targetId, targetType: type });
+
+        if (type === LikeTargetType.Post) {
+            await this.postModel.findByIdAndUpdate(targetId, { $inc: { likesCount: 1 } }).exec();
+        } else {
+            await this.commentModel.findByIdAndUpdate(targetId, { $inc: { likesCount: 1 } }).exec();
+        }
 
         if (recipientId && recipientId !== userId) {
             const notification = await this.notificationService.create({
@@ -56,7 +63,17 @@ export class LikeService {
     }
 
     async unlike(userId: string, targetId: string, type: LikeTargetType) {
-        return this.likeModel.deleteOne({ userId, targetId, targetType: type }).exec();
+        const res = await this.likeModel.deleteOne({ userId, targetId, targetType: type }).exec();
+
+        if (res.deletedCount && res.deletedCount > 0) {
+            if (type === LikeTargetType.Post) {
+                await this.postModel.findByIdAndUpdate(targetId, { $inc: { likesCount: -1 } }).exec();
+            } else {
+                await this.commentModel.findByIdAndUpdate(targetId, { $inc: { likesCount: -1 } }).exec();
+            }
+        }
+
+        return res;
     }
 
     async getLikes(targetId: string, type: LikeTargetType, userId?: string) {

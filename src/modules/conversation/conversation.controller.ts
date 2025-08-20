@@ -1,4 +1,4 @@
-import { Controller, Get, Post as HttpPost, Body, Param, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post as HttpPost, Body, Param, UseGuards, Query } from '@nestjs/common';
 import { ConversationService } from './conversation.service';
 import { JwtAuthGuard } from 'common/guards/jwt-auth.guard';
 import { CurrentUser } from 'common/decorators/current-user.decorator';
@@ -25,8 +25,18 @@ export class ConversationController {
     }
 
     @Get('user/:userId')
-    async getByUser(@Param('userId') userId: string) {
-        return this.conversationService.findByUser(userId);
+    @UseGuards(JwtAuthGuard)
+    async getByUser(
+        @Param("userId") userId: string,
+        @Query("page") page: number = 1,
+        @Query("limit") limit: number = 10,
+        @CurrentUser() user: any
+    ) {
+        if (!user || user.userId !== userId) {
+            return { success: false, message: 'Unauthorized', data: null };
+        }
+
+        return this.conversationService.findAllByUserPaginated(userId, page, limit);
     }
 
     @Get(':id')

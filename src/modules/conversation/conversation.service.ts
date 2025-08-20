@@ -56,4 +56,61 @@ export class ConversationService {
     async findById(id: string) {
         return this.conversationModel.findById(id).exec();
     }
+
+    async findAllByUserPaginated(userId: string, page = 1, limit = 10) {
+        try {
+            const p = Math.max(1, Number(page) || 1);
+            const l = Math.max(1, Math.min(Number(limit) || 10, 100));
+            const skip = (p - 1) * l;
+
+            const userObjectId = new Types.ObjectId(userId);
+
+            const [conversations, total] = await Promise.all([
+                this.conversationModel
+                    .find({ participantIds: { $in: [userObjectId] } })
+                    .sort({ updatedAt: -1 })
+                    .skip(skip)
+                    .limit(l)
+                    .populate("participantIds", "username fullName avatarUrl")
+                    .lean()
+                    .exec(),
+                this.conversationModel.countDocuments({ participantIds: { $in: [userObjectId] } }).exec()
+            ]);
+
+            const data = conversations.map((conv: any) => {
+                const participants = (conv.participantIds || []).map((u: any) => ({
+                    id: u._id,
+                    username: u.username,
+                    fullName: u.fullName,
+                    avatarUrl: u.avatarUrl,
+                }));
+
+                return {
+                    conversation: {
+                        id: conv._id,
+                        isGroup: conv.isGroup,
+                        name: conv.name,
+                        createdBy: conv.createdBy,
+                        createdAt: conv.createdAt,
+                        updatedAt: conv.updatedAt,
+                    },
+                    participants
+                };
+            })
+
+            return new ApiResponseDto(
+                {
+                    data,
+                    total,
+                    page: p,
+                    limit: l,
+                    hasMore: p * l < total,
+                },
+                "Get conversations successfully",
+                true,
+            );
+        } catch (error: any) {
+            return new ApiResponseDto(null, error.message, false, "Get conversations failed");
+        }
+    }
 }

@@ -40,7 +40,11 @@ export class ConversationController {
     }
 
     @Get(':id')
-    async getById(@Param('id') id: string) {
-        return this.conversationService.findById(id);
+    @UseGuards(JwtAuthGuard)
+    async getById(
+        @Param('id') id: string,
+        @CurrentUser() user: any
+    ) {
+        return this.conversationService.getConversationById(id, user?.userId);
     }
 }

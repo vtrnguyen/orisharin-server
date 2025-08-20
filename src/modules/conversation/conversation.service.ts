@@ -53,8 +53,48 @@ export class ConversationService {
         return this.conversationModel.find({ participantIds: userId }).exec();
     }
 
-    async findById(id: string) {
-        return this.conversationModel.findById(id).exec();
+    async getConversationById(conversationId: string, currentUserId?: string) {
+        try {
+            const conv = await this.conversationModel
+                .findById(conversationId)
+                .populate('participantIds', 'username fullName avatarUrl')
+                .lean()
+                .exec();
+
+            if (!conv) {
+                return new ApiResponseDto(null, "Conversation not found", false, "Conversation not found");
+            }
+
+            if (currentUserId) {
+                const isParticipant = (conv.participantIds || [])
+                    .map((p: any) => String(p._id || p))
+                    .includes(String(currentUserId));
+                if (!isParticipant) {
+                    return new ApiResponseDto(null, "Unauthorized", false, "You are not a participant of this conversation");
+                }
+            }
+
+            const participants = (conv.participantIds || []).map((u: any) => ({
+                id: u._id,
+                username: u.username,
+                fullName: u.fullName,
+                avatarUrl: u.avatarUrl,
+            }));
+
+            const data = {
+                conversation: {
+                    id: conv._id,
+                    isGroup: conv.isGroup,
+                    name: conv.name,
+                    createdBy: conv.createdBy,
+                },
+                participants,
+            };
+
+            return new ApiResponseDto(data, "Get conversation successfully", true);
+        } catch (error: any) {
+            return new ApiResponseDto(null, error.message, false, "Get conversation failed");
+        }
     }
 
     async findAllByUserPaginated(userId: string, page = 1, limit = 10) {

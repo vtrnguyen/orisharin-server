@@ -3,6 +3,7 @@ import { InjectModel } from "@nestjs/mongoose";
 import { Model, Types } from "mongoose";
 import { Message, MessageDocument } from "./schemas/message.schema/message.schema";
 import { Conversation, ConversationDocument } from "../conversation/schemas/conversation.schema/conversation.schema";
+import { ApiResponseDto } from "src/common/dtos/api-response.dto";
 
 @Injectable()
 export class MessageService {
@@ -34,13 +35,18 @@ export class MessageService {
         try {
             convId = new Types.ObjectId(conversationId);
         } catch (e) {
-            return {
-                messages: [],
-                hasMore: false,
-                total: 0,
-                page,
-                limit
-            };
+            return new ApiResponseDto(
+                {
+                    messages: [],
+                    hasMore: false,
+                    total: 0,
+                    page,
+                    limit
+                },
+                "Invalid conversation id",
+                false,
+                "Invalid conversation id"
+            );
         }
 
         const skip = (page - 1) * limit;
@@ -56,13 +62,15 @@ export class MessageService {
         const total = await this.messageModel.countDocuments({ conversationId: convId });
         const hasMore = skip + messages.length < total;
 
-        return {
+        const payload = {
             messages: messages.reverse(),
             hasMore,
             total,
             page,
             limit
         };
+
+        return new ApiResponseDto(payload, "Get messages successfully", true);
     }
 
     async findById(id: string) {

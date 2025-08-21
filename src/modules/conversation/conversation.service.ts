@@ -28,17 +28,7 @@ export class ConversationService {
 
             const isGroup = !!conversationData.isGroup;
 
-            // if not a group conversation, default conversation avatar is other avatar
-            let avatarUrl = '';
-            if (!isGroup && participantIds.length === 2) {
-                const otherId = createdById ? participantIds.find(id => id !== String(createdById)) : participantIds[0];
-                if (otherId) {
-                    const otherUser = await this.userModel.findById(new Types.ObjectId(otherId)).select('avatarUrl').lean().exec();
-                    avatarUrl = otherUser?.avatarUrl || '';
-                }
-            } else {
-                avatarUrl = conversationData.avatarUrl || '';
-            }
+            const avatarUrl = conversationData.avatarUrl || '';
 
             if (!isGroup && participantIds.length === 2) {
                 const existing = await this.conversationModel.findOne({
@@ -64,28 +54,12 @@ export class ConversationService {
                         avatarUrl: u.avatarUrl,
                     }));
 
-                    // if existing conversation has no avatarUrl stored, compute avatar relative to createdById
-                    let existingAvatar = (populatedExisting as any).avatarUrl || '';
-                    if (!existingAvatar && createdById && !populatedExisting.isGroup) {
-                        const other = ((populatedExisting.participantIds || []) as any[]).find((u: any) => String(u._id) !== String(createdById));
-                        existingAvatar = (other as any)?.avatarUrl || '';
-
-                        // update avatar url if not existing
-                        if (existingAvatar) {
-                            await this.conversationModel.findByIdAndUpdate(
-                                existing._id,
-                                { avatarUrl: existingAvatar },
-                                { new: true }
-                            ).exec();
-                        }
-                    }
-
                     const data = {
                         conversation: {
                             id: populatedExisting._id,
                             isGroup: populatedExisting.isGroup,
                             name: populatedExisting.name,
-                            avatarUrl: existingAvatar || '',
+                            avatarUrl: (populatedExisting as any).avatarUrl || '',
                             createdBy: populatedExisting.createdBy,
                             createdAt: (populatedExisting as any).createdAt,
                             updatedAt: (populatedExisting as any).updatedAt,
@@ -101,7 +75,7 @@ export class ConversationService {
                 participantIds: participantIds.map(id => new Types.ObjectId(id)),
                 isGroup: isGroup,
                 name: conversationData.name || '',
-                avatarUrl: avatarUrl || '',
+                avatarUrl: avatarUrl,
                 createdBy: createdById ? new Types.ObjectId(createdById) : undefined,
             } as Partial<Conversation>);
 

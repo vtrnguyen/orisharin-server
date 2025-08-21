@@ -18,7 +18,6 @@ export class ConversationService {
                 return new ApiResponseDto(null, "Participants have at least two members", false, "Participants number is less than two");
             }
 
-            // ensure createdBy is included
             if (createdById && !participantIds.includes(createdById)) {
                 participantIds.push(createdById);
             }
@@ -32,7 +31,36 @@ export class ConversationService {
                 }).exec();
 
                 if (existing) {
-                    return new ApiResponseDto(existing, "Conversation already exists", true);
+                    const populatedExisting = await this.conversationModel
+                        .findById(existing._id)
+                        .populate('participantIds', 'username fullName avatarUrl')
+                        .lean()
+                        .exec();
+
+                    if (!populatedExisting) {
+                        return new ApiResponseDto(null, "Conversation not found after lookup", false, "Conversation lookup failed");
+                    }
+
+                    const participants = (populatedExisting.participantIds || []).map((u: any) => ({
+                        id: u._id,
+                        username: u.username,
+                        fullName: u.fullName,
+                        avatarUrl: u.avatarUrl,
+                    }));
+
+                    const data = {
+                        conversation: {
+                            id: populatedExisting._id,
+                            isGroup: populatedExisting.isGroup,
+                            name: populatedExisting.name,
+                            createdBy: populatedExisting.createdBy,
+                            createdAt: (populatedExisting as any).createdAt,
+                            updatedAt: (populatedExisting as any).updatedAt,
+                        },
+                        participants
+                    };
+
+                    return new ApiResponseDto(data, "Conversation already exists", false);
                 }
             }
 
@@ -43,7 +71,36 @@ export class ConversationService {
                 createdBy: createdById ? new Types.ObjectId(createdById) : undefined,
             } as Partial<Conversation>);
 
-            return new ApiResponseDto(created, "Conversation created successfully", true);
+            const populated = await this.conversationModel
+                .findById(created._id)
+                .populate('participantIds', 'username fullName avatarUrl')
+                .lean()
+                .exec();
+
+            if (!populated) {
+                return new ApiResponseDto(null, "Conversation created but failed to populate", false, "Populate failed");
+            }
+
+            const participants = (populated.participantIds || []).map((u: any) => ({
+                id: u._id,
+                username: u.username,
+                fullName: u.fullName,
+                avatarUrl: u.avatarUrl,
+            }));
+
+            const data = {
+                conversation: {
+                    id: populated._id,
+                    isGroup: populated.isGroup,
+                    name: populated.name,
+                    createdBy: populated.createdBy,
+                    createdAt: (populated as any).createdAt,
+                    updatedAt: (populated as any).updatedAt,
+                },
+                participants
+            };
+
+            return new ApiResponseDto(data, "Conversation created successfully", true);
         } catch (error: any) {
             return new ApiResponseDto(null, error.message, false, "Create conversation failed");
         }

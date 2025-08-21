@@ -1,8 +1,8 @@
-import { Injectable } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
-import { Message, MessageDocument } from './schemas/message.schema/message.schema';
-import { Conversation, ConversationDocument } from '../conversation/schemas/conversation.schema/conversation.schema';
+import { Injectable } from "@nestjs/common";
+import { InjectModel } from "@nestjs/mongoose";
+import { Model, Types } from "mongoose";
+import { Message, MessageDocument } from "./schemas/message.schema/message.schema";
+import { Conversation, ConversationDocument } from "../conversation/schemas/conversation.schema/conversation.schema";
 
 @Injectable()
 export class MessageService {
@@ -14,11 +14,55 @@ export class MessageService {
     ) { }
 
     async create(messageData: Partial<Message>) {
-        return this.messageModel.create(messageData);
+        const message = await this.messageModel.create(messageData);
+
+        // Populate sender info for realtime broadcast
+        const populatedMessage = await this.messageModel
+            .findById(message._id)
+            .populate("senderId", "fullName username avatarUrl")
+            .exec();
+
+        return populatedMessage;
     }
 
-    async findByConversation(conversationId: string) {
-        return this.messageModel.find({ conversationId }).populate('senderId').exec();
+    async findByConversationPaginated(
+        conversationId: string,
+        page: number = 1,
+        limit: number = 20
+    ) {
+        let convId: Types.ObjectId;
+        try {
+            convId = new Types.ObjectId(conversationId);
+        } catch (e) {
+            return {
+                messages: [],
+                hasMore: false,
+                total: 0,
+                page,
+                limit
+            };
+        }
+
+        const skip = (page - 1) * limit;
+
+        const messages = await this.messageModel
+            .find({ conversationId: convId })
+            .populate("senderId", "fullName username avatarUrl")
+            .sort({ sentAt: -1 })
+            .skip(skip)
+            .limit(limit)
+            .exec();
+
+        const total = await this.messageModel.countDocuments({ conversationId: convId });
+        const hasMore = skip + messages.length < total;
+
+        return {
+            messages: messages.reverse(),
+            hasMore,
+            total,
+            page,
+            limit
+        };
     }
 
     async findById(id: string) {
@@ -34,5 +78,23 @@ export class MessageService {
     async getParticipants(conversationId: string) {
         const conv = await this.conversationModel.findById(conversationId).exec();
         return conv ? conv.participantIds : [];
+    }
+
+    async markAsRead(messageId: string, userId: string) {
+        return this.messageModel.findByIdAndUpdate(
+            messageId,
+            { $addToSet: { seenBy: userId } },
+            { new: true }
+        ).exec();
+    }
+
+    async markConversationAsRead(conversationId: string, userId: string) {
+        return this.messageModel.updateMany(
+            {
+                conversationId,
+                seenBy: { $ne: userId }
+            },
+            { $addToSet: { seenBy: userId } }
+        ).exec();
     }
 }

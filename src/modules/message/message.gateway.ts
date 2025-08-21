@@ -18,8 +18,18 @@ export class MessageGateway implements OnGatewayConnection, OnGatewayDisconnect 
     handleConnection(client: any, ...args: any[]) {
         try {
             const token = client.handshake.auth?.token || client.handshake.query?.token;
+            if (!token) {
+                client.disconnect(true);
+                return;
+            }
+
             const payload = this.jwtService.verify(token);
-            const userId = payload?.userId;
+            const userId = payload?.userId || payload?.id;
+
+            if (!userId) {
+                client.disconnect(true);
+                return;
+            }
 
             // register socket
             if (!this.userSockets.has(userId)) this.userSockets.set(userId, new Set());
@@ -36,6 +46,7 @@ export class MessageGateway implements OnGatewayConnection, OnGatewayDisconnect 
     handleDisconnect(client: Socket) {
         const userId = client.data.userId;
         if (!userId) return;
+
         const set = this.userSockets.get(userId);
         if (set) {
             set.delete(client.id);
@@ -46,6 +57,7 @@ export class MessageGateway implements OnGatewayConnection, OnGatewayDisconnect 
     @SubscribeMessage('message:send')
     async handleSendMessage(client: Socket, payload: { conversationId: string; content?: string; mediaUrls?: string[] }) {
         const senderId = client.data.userId;
+
         // validate membership - implement in messageService
         const allowed = await this.messageService.isParticipant(payload.conversationId, senderId);
         if (!allowed) {
@@ -55,8 +67,8 @@ export class MessageGateway implements OnGatewayConnection, OnGatewayDisconnect 
 
         const { Types } = require('mongoose');
         const msg = await this.messageService.create({
-            conversationId: Types.ObjectId(payload.conversationId),
-            senderId,
+            conversationId: new Types.ObjectId(payload.conversationId),
+            senderId: new Types.ObjectId(senderId),
             content: payload.content,
             mediaUrls: payload.mediaUrls || [],
             sentAt: new Date(),

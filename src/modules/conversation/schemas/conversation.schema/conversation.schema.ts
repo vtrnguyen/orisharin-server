@@ -14,6 +14,9 @@ export class Conversation {
     @Prop()
     name?: string;
 
+    @Prop({ default: "" })
+    avatarUrl?: string;
+
     @Prop({ type: Types.ObjectId, ref: 'User' })
     createdBy: Types.ObjectId;
 }

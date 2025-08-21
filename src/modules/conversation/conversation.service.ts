@@ -3,12 +3,15 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Conversation, ConversationDocument } from './schemas/conversation.schema/conversation.schema';
 import { ApiResponseDto } from 'src/common/dtos/api-response.dto';
+import { User, UserDocument } from '../user/schemas/user.schema/user.schema';
 
 @Injectable()
 export class ConversationService {
     constructor(
         @InjectModel(Conversation.name)
         private readonly conversationModel: Model<ConversationDocument>,
+        @InjectModel(User.name)
+        private readonly userModel: Model<UserDocument>,
     ) { }
 
     async create(conversationData: Partial<Conversation>, createdById?: string) {
@@ -18,11 +21,24 @@ export class ConversationService {
                 return new ApiResponseDto(null, "Participants have at least two members", false, "Participants number is less than two");
             }
 
+            // ensure createdBy is included
             if (createdById && !participantIds.includes(createdById)) {
                 participantIds.push(createdById);
             }
 
             const isGroup = !!conversationData.isGroup;
+
+            // if not a group conversation, default conversation avatar is other avatar
+            let avatarUrl = '';
+            if (!isGroup && participantIds.length === 2) {
+                const otherId = createdById ? participantIds.find(id => id !== String(createdById)) : participantIds[0];
+                if (otherId) {
+                    const otherUser = await this.userModel.findById(new Types.ObjectId(otherId)).select('avatarUrl').lean().exec();
+                    avatarUrl = otherUser?.avatarUrl || '';
+                }
+            } else {
+                avatarUrl = conversationData.avatarUrl || '';
+            }
 
             if (!isGroup && participantIds.length === 2) {
                 const existing = await this.conversationModel.findOne({
@@ -48,11 +64,28 @@ export class ConversationService {
                         avatarUrl: u.avatarUrl,
                     }));
 
+                    // if existing conversation has no avatarUrl stored, compute avatar relative to createdById
+                    let existingAvatar = (populatedExisting as any).avatarUrl || '';
+                    if (!existingAvatar && createdById && !populatedExisting.isGroup) {
+                        const other = ((populatedExisting.participantIds || []) as any[]).find((u: any) => String(u._id) !== String(createdById));
+                        existingAvatar = (other as any)?.avatarUrl || '';
+
+                        // update avatar url if not existing
+                        if (existingAvatar) {
+                            await this.conversationModel.findByIdAndUpdate(
+                                existing._id,
+                                { avatarUrl: existingAvatar },
+                                { new: true }
+                            ).exec();
+                        }
+                    }
+
                     const data = {
                         conversation: {
                             id: populatedExisting._id,
                             isGroup: populatedExisting.isGroup,
                             name: populatedExisting.name,
+                            avatarUrl: existingAvatar || '',
                             createdBy: populatedExisting.createdBy,
                             createdAt: (populatedExisting as any).createdAt,
                             updatedAt: (populatedExisting as any).updatedAt,
@@ -68,6 +101,7 @@ export class ConversationService {
                 participantIds: participantIds.map(id => new Types.ObjectId(id)),
                 isGroup: isGroup,
                 name: conversationData.name || '',
+                avatarUrl: avatarUrl || '',
                 createdBy: createdById ? new Types.ObjectId(createdById) : undefined,
             } as Partial<Conversation>);
 
@@ -93,6 +127,7 @@ export class ConversationService {
                     id: populated._id,
                     isGroup: populated.isGroup,
                     name: populated.name,
+                    avatarUrl: (populated as any).avatarUrl || '',
                     createdBy: populated.createdBy,
                     createdAt: (populated as any).createdAt,
                     updatedAt: (populated as any).updatedAt,
@@ -143,6 +178,7 @@ export class ConversationService {
                     id: conv._id,
                     isGroup: conv.isGroup,
                     name: conv.name,
+                    avatarUrl: conv.avatarUrl || '',
                     createdBy: conv.createdBy,
                 },
                 participants,
@@ -187,6 +223,7 @@ export class ConversationService {
                         id: conv._id,
                         isGroup: conv.isGroup,
                         name: conv.name,
+                        avatarUrl: conv.avatarUrl || '',
                         createdBy: conv.createdBy,
                         createdAt: conv.createdAt,
                         updatedAt: conv.updatedAt,

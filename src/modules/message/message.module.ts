@@ -7,6 +7,7 @@ import { Conversation, ConversationSchema } from "../conversation/schemas/conver
 import { MessageGateway } from "./message.gateway";
 import { JwtModule } from "@nestjs/jwt";
 import { ConfigModule, ConfigService } from "@nestjs/config";
+import { CloudinaryModule } from "src/common/cloudinary/cloudinary.module";
 
 @Module({
     imports: [
@@ -25,6 +26,7 @@ import { ConfigModule, ConfigService } from "@nestjs/config";
             }),
             inject: [ConfigService],
         }),
+        CloudinaryModule,
     ],
     controllers: [MessageController],
     providers: [MessageService, MessageGateway],

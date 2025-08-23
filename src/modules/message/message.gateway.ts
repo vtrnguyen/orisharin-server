@@ -96,4 +96,16 @@ export class MessageGateway implements OnGatewayConnection, OnGatewayDisconnect 
             }
         }
     }
+
+    public async broadcastMessageDeleted(conversationId: string, messageId: string) {
+        const participantIds = await this.messageService.getParticipants(conversationId);
+        for (const pid of participantIds) {
+            const sockets = this.userSockets.get(pid.toString());
+            if (sockets) {
+                for (const sid of sockets) {
+                    this.server.to(sid).emit('message:deleted', { id: messageId });
+                }
+            }
+        }
+    }
 }

@@ -108,4 +108,16 @@ export class MessageGateway implements OnGatewayConnection, OnGatewayDisconnect 
             }
         }
     }
+
+    public async broadCastMessageReacted(conversationId: string, payload: { messageId: string; userId: string; user?: any; type: string | null; reactionsCount: any }) {
+        const participantIds = await this.messageService.getParticipants(conversationId);
+        for (const pid of participantIds) {
+            const sockets = this.userSockets.get(pid.toString());
+            if (sockets) {
+                for (const sid of sockets) {
+                    this.server.to(sid).emit("message:reacted", payload);
+                }
+            }
+        }
+    }
 }

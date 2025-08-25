@@ -5,6 +5,7 @@ import { Message, MessageDocument } from "./schemas/message.schema/message.schem
 import { Conversation, ConversationDocument } from "../conversation/schemas/conversation.schema/conversation.schema";
 import { ApiResponseDto } from "src/common/dtos/api-response.dto";
 import { CloudinaryService } from "src/common/cloudinary/cloudinary.service";
+import { Reaction } from "src/common/enums/reaction.enum";
 
 @Injectable()
 export class MessageService {
@@ -55,6 +56,75 @@ export class MessageService {
         }
     }
 
+    async react(messageId: string, userId: string, type: string) {
+        try {
+            const allowedTypes = Object.values(Reaction);
+            if (!allowedTypes.includes(type as Reaction)) {
+                return new ApiResponseDto(null, "invalid reaction", false, "invalid reaction");
+            }
+
+            const msg: any = await this.messageModel.findById(messageId).exec();
+            if (!msg) return new ApiResponseDto(null, "message not found", false, "message not found");
+
+            // verify participant
+            const conv = await this.conversationModel.findById(msg.conversationId).exec();
+            if (!conv || !conv.participantIds.map((p: any) => String(p)).includes(String(userId))) {
+                return new ApiResponseDto(null, "unauthorized", false, "You are not a participant");
+            }
+
+            const existing = (msg.reactions || []).find((r: any) => String(r.userId) === String(userId));
+
+            if (existing && existing.type === type) {
+                // remove reaction
+                await this.messageModel.findByIdAndUpdate(
+                    messageId,
+                    { $pull: { reactions: { userId: new Types.ObjectId(userId) } }, $inc: { [`reactionsCount.${type}`]: -1 } },
+                    { new: true }
+                ).exec();
+
+                const updated = await this.messageModel.findById(messageId)
+                    .populate("senderId", "fullName username avatarUrl")
+                    .populate({ path: "reactions.userId", select: "fullName username avatarUrl" })
+                    .exec();
+
+                return new ApiResponseDto({ message: updated, action: 'removed', type }, "reaction removed", true);
+            }
+
+            if (existing && existing.type !== type) {
+                // change reaction
+                const from = existing.type;
+                await this.messageModel.findOneAndUpdate(
+                    { _id: messageId, 'reactions.userId': new Types.ObjectId(userId) },
+                    { $set: { 'reactions.$.type': type }, $inc: { [`reactionsCount.${type}`]: 1, [`reactionsCount.${from}`]: -1 } },
+                    { new: true }
+                ).exec();
+
+                const updated = await this.messageModel.findById(messageId)
+                    .populate("senderId", "fullName username avatarUrl")
+                    .populate({ path: "reactions.userId", select: "fullName username avatarUrl" })
+                    .exec();
+
+                return new ApiResponseDto({ message: updated, action: 'changed', from, to: type }, "reaction changed", true);
+            }
+
+            // add new reaction
+            await this.messageModel.findByIdAndUpdate(
+                messageId,
+                { $push: { reactions: { userId: new Types.ObjectId(userId), type } }, $inc: { [`reactionsCount.${type}`]: 1 } },
+                { new: true }
+            ).exec();
+
+            const updated = await this.messageModel.findById(messageId)
+                .populate("senderId", "fullName username avatarUrl")
+                .populate({ path: "reactions.userId", select: "fullName username avatarUrl" })
+                .exec();
+
+            return new ApiResponseDto({ message: updated, action: 'added', type }, "reaction added", true);
+        } catch (error: any) {
+            return new ApiResponseDto(null, error.message || "reaction failed", false, "reaction failed");
+        }
+    }
+
     async findByConversationPaginated(
         conversationId: string,
         page: number = 1,
@@ -83,6 +153,7 @@ export class MessageService {
         const messages = await this.messageModel
             .find({ conversationId: convId })
             .populate("senderId", "fullName username avatarUrl")
+            .populate({ path: "reactions.userId", select: "fullName username avatarUrl" })
             .sort({ sentAt: -1 })
             .skip(skip)
             .limit(limit)

@@ -182,6 +182,72 @@ export class ConversationService {
         }
     }
 
+    async addParticipants(conversationId: string, userIds: string[], currentUserId: string) {
+        try {
+            if (!userIds || !Array.isArray(userIds) || userIds.length === 0) {
+                return new ApiResponseDto(null, "userIds are required", false, "bad request");
+            }
+
+            const incoming = Array.from(new Set(userIds.map(id => String(id).trim()).filter(Boolean)));
+            if (incoming.length === 0) return new ApiResponseDto(null, "no valid userIds provided", false, "bad request");
+
+            const conv: any = await this.conversationModel.findById(conversationId).exec();
+            if (!conv) return new ApiResponseDto(null, "conversation not found", false, "conversation not found");
+
+            if (!conv.isGroup) return new ApiResponseDto(null, "cannot add participants to a non-group conversation", false, "not a group conversation");
+
+            // only user in conversation can add new members
+            const callerIsParticipant = (conv.participantIds || []).map((p: any) => String(p)).includes(String(currentUserId));
+            if (!callerIsParticipant) return new ApiResponseDto(null, "unauthorized", false, "you are not a participant of this conversation");
+
+            // check userIds actually exist
+            const objectIds = incoming.map(id => {
+                try { return new Types.ObjectId(id); } catch { return null; }
+            }).filter((o): o is Types.ObjectId => !!o);
+
+            if (objectIds.length === 0) return new ApiResponseDto(null, "no valid userIds provided", false, "bad request");
+
+            const existingUsers = await this.userModel.find(
+                { _id: { $in: objectIds } },
+                { _id: 1, username: 1, fullName: 1, avatarUrl: 1 }
+            ).lean().exec();
+            const existingIdsSet = new Set(existingUsers.map((u: any) => String(u._id)));
+
+            const notFound = incoming.filter(id => !existingIdsSet.has(id));
+
+            // compute toAdd = existing ids that are not already participants
+            const alreadySet = new Set((conv.participantIds || []).map((p: any) => String(p)));
+            const toAddIds = Array.from(existingUsers.map((u: any) => String(u._id))).filter(id => !alreadySet.has(id));
+            if (toAddIds.length === 0) {
+                // nothing to add
+                const populated = await this.conversationModel.findById(conv._id)
+                    .populate('participantIds', 'username fullName avatarUrl')
+                    .lean()
+                    .exec();
+
+                return new ApiResponseDto({ conversation: populated, added: [], skipped: incoming, notFound }, "No new participants added", true);
+            }
+
+            // add them atomically with $addToSet + $each
+            const toAddObjectIds = toAddIds.map(id => new Types.ObjectId(id));
+            await this.conversationModel.findByIdAndUpdate(conv._id, { $addToSet: { participantIds: { $each: toAddObjectIds } } }).exec();
+
+            // return populated conversation and lists
+            const populatedAfter = await this.conversationModel.findById(conv._id)
+                .populate('participantIds', 'username fullName avatarUrl')
+                .lean()
+                .exec();
+
+            // built added/skipped arrays for response
+            const added = toAddIds;
+            const skipped = incoming.filter(id => !added.includes(id) && !notFound.includes(id)); // already existing
+
+            return new ApiResponseDto({ conversation: populatedAfter, added, skipped, notFound }, "Participants added successfully", true);
+        } catch (error: any) {
+            return new ApiResponseDto(null, error.message, false, "add participants failed");
+        }
+    }
+
     async findByUser(userId: string) {
         return this.conversationModel.find({ participantIds: userId }).exec();
     }

@@ -69,4 +69,15 @@ export class ConversationController {
     ) {
         return this.conversationService.updateName(id, body?.name, user.userId);
     }
+
+    @Patch(":id/participants")
+    @UseGuards(JwtAuthGuard)
+    async addParticipants(
+        @Param("id") id: string,
+        @Body() body: { userIds: string[] },
+        @CurrentUser() user: any
+    ) {
+        const userIds = Array.isArray(body.userIds) ? body.userIds : [];
+        return this.conversationService.addParticipants(id, userIds, user.userId);
+    }
 }

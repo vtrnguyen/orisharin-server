@@ -4,6 +4,8 @@ import { Model, Types } from 'mongoose';
 import { Conversation, ConversationDocument } from './schemas/conversation.schema/conversation.schema';
 import { ApiResponseDto } from 'src/common/dtos/api-response.dto';
 import { User, UserDocument } from '../user/schemas/user.schema/user.schema';
+import { extractCloudinaryPublicId } from 'src/common/functions/extract-cloudinary-public-id';
+import { CloudinaryService } from 'src/common/cloudinary/cloudinary.service';
 
 @Injectable()
 export class ConversationService {
@@ -12,6 +14,7 @@ export class ConversationService {
         private readonly conversationModel: Model<ConversationDocument>,
         @InjectModel(User.name)
         private readonly userModel: Model<UserDocument>,
+        private cloudinaryService: CloudinaryService
     ) { }
 
     async create(conversationData: Partial<Conversation>, createdById?: string) {
@@ -112,6 +115,70 @@ export class ConversationService {
             return new ApiResponseDto(data, "Conversation created successfully", true);
         } catch (error: any) {
             return new ApiResponseDto(null, error.message, false, "Create conversation failed");
+        }
+    }
+
+    async updateAvatar(conversationId: string, file: Express.Multer.File, userId: string) {
+        try {
+            if (!file) return new ApiResponseDto(null, "no file uploaded", false, "file missing");
+
+            const conv: any = await this.conversationModel.findById(conversationId).exec();
+            if (!conv) return new ApiResponseDto(null, "conversation not found", false, "conversation not found");
+
+            const isParticipant = (conv.participantIds || []).map((p: any) => String(p)).includes(String(userId));
+            if (!isParticipant) return new ApiResponseDto(null, "unauthorized", false, "you are not a participant of this conversation");
+
+            const oldUrl: string = (conv as any).avatarUrl || '';
+            const publicId: string | null = extractCloudinaryPublicId(oldUrl);
+            if (publicId) {
+                try {
+                    await this.cloudinaryService.deleteImage(publicId);
+                } catch (error: any) { }
+            }
+
+            const uploadRes: any = await this.cloudinaryService.uploadImage(file);
+            const newUrl = uploadRes?.secure_url || uploadRes?.url;
+            if (!newUrl) return new ApiResponseDto(null, "upload failed", false, "cloudinary upload failed");
+
+            conv.avatarUrl = newUrl;
+            await conv.save();
+
+            const populated = await this.conversationModel
+                .findById(conv._id)
+                .populate('participantIds', 'username fullName avatarUrl')
+                .lean()
+                .exec();
+
+            return new ApiResponseDto({ conversation: populated }, "avatar updated successfully", true);
+        } catch (error: any) {
+            return new ApiResponseDto(null, error.message, false, "update avatar failed");
+        }
+    }
+
+    async updateName(conversationId: string, name: string, userId: string) {
+        try {
+            if (!name || String(name).trim() === "") return new ApiResponseDto(null, "name is required", false, "bad request");
+
+            const conv: any = await this.conversationModel.findById(conversationId).exec();
+            if (!conv) return new ApiResponseDto(null, "conversation not found", false, "conversation not found");
+
+            if (!conv.isGroup) return new ApiResponseDto(null, "cannot update name of a non-group conversation", false, "not a group conversation");
+
+            const isParticipant = (conv.participantIds || []).map((p: any) => String(p)).includes(String(userId));
+            if (!isParticipant) return new ApiResponseDto(null, "unauthorized", false, "you are not a participant of this conversation");
+
+            conv.name = String(name).trim();
+            await conv.save();
+
+            const populated = await this.conversationModel
+                .findById(conv._id)
+                .populate('participantIds', 'username fullName avatarUrl')
+                .lean()
+                .exec();
+
+            return new ApiResponseDto({ conversation: populated }, "name updated successfully", true);
+        } catch (error: any) {
+            return new ApiResponseDto(null, error.message, false, "update name failed");
         }
     }
 

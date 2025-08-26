@@ -1,7 +1,8 @@
-import { Controller, Get, Post as HttpPost, Body, Param, UseGuards, Query } from '@nestjs/common';
+import { Controller, Get, Post as HttpPost, Body, Param, UseGuards, Query, UseInterceptors, Patch, UploadedFile } from '@nestjs/common';
 import { ConversationService } from './conversation.service';
 import { JwtAuthGuard } from 'common/guards/jwt-auth.guard';
 import { CurrentUser } from 'common/decorators/current-user.decorator';
+import { FileInterceptor } from '@nestjs/platform-express';
 
 @Controller('api/v1/conversations')
 export class ConversationController {
@@ -46,5 +47,26 @@ export class ConversationController {
         @CurrentUser() user: any
     ) {
         return this.conversationService.getConversationById(id, user?.userId);
+    }
+
+    @Patch(":id/avatar")
+    @UseGuards(JwtAuthGuard)
+    @UseInterceptors(FileInterceptor("file"))
+    async updateAvatar(
+        @Param("id") id: string,
+        @UploadedFile() file: Express.Multer.File,
+        @CurrentUser() user: any
+    ) {
+        return this.conversationService.updateAvatar(id, file, user.userId);
+    }
+
+    @Patch(":id/name")
+    @UseGuards(JwtAuthGuard)
+    async updateName(
+        @Param("id") id: string,
+        @Body() body: { name: string },
+        @CurrentUser() user: any
+    ) {
+        return this.conversationService.updateName(id, body?.name, user.userId);
     }
 }

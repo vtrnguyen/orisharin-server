@@ -6,6 +6,7 @@ import { Conversation, ConversationDocument } from "../conversation/schemas/conv
 import { ApiResponseDto } from "src/common/dtos/api-response.dto";
 import { CloudinaryService } from "src/common/cloudinary/cloudinary.service";
 import { Reaction } from "src/common/enums/reaction.enum";
+import { extractCloudinaryPublicId } from "src/common/functions/extract-cloudinary-public-id";
 
 @Injectable()
 export class MessageService {
@@ -40,7 +41,7 @@ export class MessageService {
             const mediaUrls: string[] = Array.isArray(msg.mediaUrls) ? msg.mediaUrls.slice() : [];
             const publicIds: string[] = [];
             for (const url of mediaUrls) {
-                const pid = this.extractCloudinaryPublicId(url);
+                const pid = extractCloudinaryPublicId(url);
                 if (pid) publicIds.push(pid);
             }
 
@@ -204,29 +205,5 @@ export class MessageService {
             },
             { $addToSet: { seenBy: userId } }
         ).exec();
-    }
-
-    private extractCloudinaryPublicId(url?: string): string | null {
-        if (!url) return null;
-        try {
-            const re = /\/upload\/(?:.*\/)?v\d+\/(.+?)\.(?:jpg|jpeg|png|gif|mp4|webm|mov|svg|webp|bmp|tiff|heic|heif)(?:\?|$)/i;
-            const m = url.match(re);
-            if (m && m[1]) return m[1];
-
-            const re2 = /\/upload\/(.+?)\.(?:jpg|jpeg|png|gif|mp4|webm|mov|svg|webp|bmp|tiff|heic|heif)(?:\?|$)/i;
-            const m2 = url.match(re2);
-            if (m2 && m2[1]) {
-                let id = m2[1];
-                const parts = id.split('/');
-                if (parts.length > 1 && (/[,]|^c_|^w_|^h_|^g_/.test(parts[0]))) {
-                    while (parts.length > 1 && (/[,]|^c_|^w_|^h_|^g_/.test(parts[0]))) {
-                        parts.shift();
-                    }
-                }
-                return parts.join('/');
-            }
-        } catch (e) {
-        }
-        return null;
     }
 }

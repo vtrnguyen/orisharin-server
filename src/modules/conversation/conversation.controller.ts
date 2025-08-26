@@ -80,4 +80,24 @@ export class ConversationController {
         const userIds = Array.isArray(body.userIds) ? body.userIds : [];
         return this.conversationService.addParticipants(id, userIds, user.userId);
     }
+
+    @Patch(":id/participants/remove")
+    @UseGuards(JwtAuthGuard)
+    async removeParticipants(
+        @Param("id") id: string,
+        @Body() body: { userIds: string[] },
+        @CurrentUser() user: any
+    ) {
+        const userIds = Array.isArray(body.userIds) ? body.userIds : [];
+        return this.conversationService.removeParticipants(id, userIds, user.userId);
+    }
+
+    @Patch(":id/leave")
+    @UseGuards(JwtAuthGuard)
+    async leaveConversation(
+        @Param("id") id: string,
+        @CurrentUser() user: any
+    ) {
+        return this.conversationService.leaveConversation(id, user.userId);
+    }
 }

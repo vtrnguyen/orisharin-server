@@ -248,6 +248,137 @@ export class ConversationService {
         }
     }
 
+    async removeParticipants(conversationId: string, userIds: string[], currentUserId: string) {
+        try {
+            if (!userIds || !Array.isArray(userIds) || userIds.length === 0) {
+                return new ApiResponseDto(null, "userIds are required", false, "bad request");
+            }
+
+            const incoming = Array.from(new Set(userIds.map(id => String(id).trim()).filter(Boolean)));
+            if (incoming.length === 0) return new ApiResponseDto(null, "no valid userIds provided", false, "bad request");
+
+            const conv: any = await this.conversationModel.findById(conversationId).exec();
+            if (!conv) return new ApiResponseDto(null, "conversation not found", false, "conversation not found");
+
+            if (!conv.isGroup) return new ApiResponseDto(null, "cannot remove participants from a non-group conversation", false, "not a group conversation");
+
+            // only admin (createdBy) can remove other members
+            if (!conv.createdBy || String(conv.createdBy) !== String(currentUserId)) {
+                return new ApiResponseDto(null, "forbidden", false, "only the conversation admin can remove participants");
+            }
+
+            // validate userIds exist
+            const objectIds = incoming.map(id => {
+                try { return new Types.ObjectId(id); } catch { return null; }
+            }).filter((o): o is Types.ObjectId => !!o);
+
+            if (objectIds.length === 0) return new ApiResponseDto(null, "no valid userIds provided", false, "bad request");
+
+            const existingUsers = await this.userModel.find(
+                { _id: { $in: objectIds } },
+                { _id: 1, username: 1, fullName: 1, avatarUrl: 1 }
+            ).lean().exec();
+            const existingIdsSet = new Set(existingUsers.map((u: any) => String(u._id)));
+            const notFound = incoming.filter(id => !existingIdsSet.has(id));
+
+            // compute toRemove = existing ids that are currently participants
+            const alreadySet = new Set((conv.participantIds || []).map((p: any) => String(p)));
+            // do not allow removing the creator/admin themselves
+            const creatorIdStr = conv.createdBy ? String(conv.createdBy) : null;
+            const toRemoveIds = Array.from(existingUsers.map((u: any) => String(u._id)))
+                .filter(id => alreadySet.has(id) && id !== creatorIdStr);
+
+            if (toRemoveIds.length === 0) {
+                const populated = await this.conversationModel.findById(conv._id)
+                    .populate('participantIds', 'username fullName avatarUrl')
+                    .lean()
+                    .exec();
+                const skipped = incoming.filter(id => !toRemoveIds.includes(id) && !notFound.includes(id));
+                return new ApiResponseDto({ conversation: populated, removed: [], skipped, notFound }, "No participants removed", true);
+            }
+
+            const toRemoveObjectIds = toRemoveIds.map(id => new Types.ObjectId(id));
+            // remove them
+            await this.conversationModel.findByIdAndUpdate(conv._id, { $pull: { participantIds: { $in: toRemoveObjectIds } } }).exec();
+
+            // fetch remainder
+            const after = await this.conversationModel.findById(conv._id).exec();
+            const remaining = (after?.participantIds || []).map((p: any) => String(p));
+
+            // if no participants remain, delete the conversation
+            if (!after || (after.participantIds || []).length === 0) {
+                await this.conversationModel.findByIdAndDelete(conv._id).exec();
+                return new ApiResponseDto({ conversation: null, removed: toRemoveIds, skipped: [], notFound }, "Participants removed — conversation deleted (no participants remain)", true);
+            }
+
+            // defensive: if createdBy somehow got removed (shouldn't happen here), reassign
+            if (after && after.createdBy && !remaining.includes(String(after.createdBy))) {
+                const newCreatedBy = remaining.length ? new Types.ObjectId(remaining[0]) : undefined;
+                await this.conversationModel.findByIdAndUpdate(conv._id, { $set: { createdBy: newCreatedBy } }).exec();
+            }
+
+            const populatedAfter = await this.conversationModel.findById(conv._id)
+                .populate('participantIds', 'username fullName avatarUrl')
+                .lean()
+                .exec();
+
+            const removed = toRemoveIds;
+            const skipped = incoming.filter(id => !removed.includes(id) && !notFound.includes(id)); // e.g. not participants or creator
+
+            return new ApiResponseDto({ conversation: populatedAfter, removed, skipped, notFound }, "Participants removed successfully", true);
+        } catch (error: any) {
+            return new ApiResponseDto(null, error.message, false, "remove participants failed");
+        }
+    }
+
+    async leaveConversation(conversationId: string, currentUserId: string) {
+        try {
+            const conv: any = await this.conversationModel.findById(conversationId).exec();
+            if (!conv) return new ApiResponseDto(null, "conversation not found", false, "conversation not found");
+
+            const isParticipant = (conv.participantIds || []).map((p: any) => String(p)).includes(String(currentUserId));
+            if (!isParticipant) return new ApiResponseDto(null, "unauthorized", false, "you are not a participant of this conversation");
+
+            // admin cannot leave. Require admin to transfer ownership or delete the conversation.
+            if (conv.createdBy && String(conv.createdBy) === String(currentUserId)) {
+                return new ApiResponseDto(null, "admin cannot leave the group; transfer admin or delete the group first", false, "admin cannot leave");
+            }
+
+            // non-group (1:1) - leaving will delete conversation for both participants
+            if (!conv.isGroup) {
+                return new ApiResponseDto(null, "you can't leave with non-group conversations", false);
+            }
+
+            // group: remove current user
+            await this.conversationModel.findByIdAndUpdate(conv._id, { $pull: { participantIds: new Types.ObjectId(currentUserId) } }).exec();
+
+            // fetch remainder
+            const after = await this.conversationModel.findById(conv._id).exec();
+            const remaining = (after?.participantIds || []).map((p: any) => String(p));
+
+            // if no participants left, delete conversation
+            if (!after || remaining.length === 0) {
+                await this.conversationModel.findByIdAndDelete(conv._id).exec();
+                return new ApiResponseDto({ conversation: null }, "You left and conversation deleted (no participants remain)", true);
+            }
+
+            // if createdBy removed (shouldn't happen since admin can't leave), reassign defensively
+            if (after && after.createdBy && !remaining.includes(String(after.createdBy))) {
+                const newCreatedBy = remaining.length ? new Types.ObjectId(remaining[0]) : undefined;
+                await this.conversationModel.findByIdAndUpdate(conv._id, { $set: { createdBy: newCreatedBy } }).exec();
+            }
+
+            const populatedAfter = await this.conversationModel.findById(conv._id)
+                .populate('participantIds', 'username fullName avatarUrl')
+                .lean()
+                .exec();
+
+            return new ApiResponseDto({ conversation: populatedAfter }, "You have left the conversation", true);
+        } catch (error: any) {
+            return new ApiResponseDto(null, error.message, false, "leave conversation failed");
+        }
+    }
+
     async findByUser(userId: string) {
         return this.conversationModel.find({ participantIds: userId }).exec();
     }

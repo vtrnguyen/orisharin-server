@@ -115,6 +115,43 @@ export class PostService {
 
             const total = await this.postModel.countDocuments({ isDeleted: false });
 
+            // collect referenced post ids (sharedFromPostId or originalPostId)
+            const referencedIds = new Set<string>();
+            for (const p of posts) {
+                if ((p as any).sharedFromPostId) referencedIds.add(String((p as any).sharedFromPostId));
+                else if ((p as any).originalPostId) referencedIds.add(String((p as any).originalPostId));
+            }
+
+            // fetch all referenced posts in batch with their authors
+            let refsMap: Record<string, any> = {};
+            if (referencedIds.size > 0) {
+                const refs = await this.postModel
+                    .find({ _id: { $in: Array.from(referencedIds).map(id => new Types.ObjectId(id)) } })
+                    .populate('authorId')
+                    .lean()
+                    .exec();
+
+                for (const r of refs) {
+                    const userObj = r.authorId && typeof r.authorId === 'object'
+                        ? {
+                            id: (r.authorId as any)._id,
+                            username: (r.authorId as any).username,
+                            fullName: (r.authorId as any).fullName,
+                            avatarUrl: (r.authorId as any).avatarUrl,
+                        }
+                        : null;
+
+                    const { authorId, ...rPostData } = r;
+                    refsMap[String(r._id)] = {
+                        post: {
+                            ...rPostData,
+                            id: r._id,
+                        },
+                        author: userObj,
+                    };
+                }
+            }
+
             const data = posts.map(post => {
                 const user = post.authorId && typeof post.authorId === 'object'
                     ? {
@@ -127,12 +164,18 @@ export class PostService {
 
                 const { authorId, ...postData } = post.toObject();
 
+                // determine referenced id (prefer sharedFromPostId over originalPostId)
+                const refId = post.sharedFromPostId ? String(post.sharedFromPostId) : (post.originalPostId ? String(post.originalPostId) : null);
+                const referenced = refId ? (refsMap[refId] || null) : null;
+
                 return {
                     post: {
                         ...postData,
                         id: post._id,
                     },
                     author: user,
+                    sharedPost: post.sharedFromPostId ? referenced : null,
+                    originalPost: (!post.sharedFromPostId && post.originalPostId) ? referenced : null,
                 };
             });
 
@@ -202,6 +245,43 @@ export class PostService {
 
             const total = await this.postModel.countDocuments({ authorId: user._id, isDeleted: false });
 
+            // collect referenced post ids
+            const referencedIds = new Set<string>();
+            for (const p of posts) {
+                if ((p as any).sharedFromPostId) referencedIds.add(String((p as any).sharedFromPostId));
+                else if ((p as any).originalPostId) referencedIds.add(String((p as any).originalPostId));
+            }
+
+            // fetch referenced posts
+            let refsMap: Record<string, any> = {};
+            if (referencedIds.size > 0) {
+                const refs = await this.postModel
+                    .find({ _id: { $in: Array.from(referencedIds).map(id => new Types.ObjectId(id)) } })
+                    .populate('authorId')
+                    .lean()
+                    .exec();
+
+                for (const r of refs) {
+                    const userObj = r.authorId && typeof r.authorId === 'object'
+                        ? {
+                            id: (r.authorId as any)._id,
+                            username: (r.authorId as any).username,
+                            fullName: (r.authorId as any).fullName,
+                            avatarUrl: (r.authorId as any).avatarUrl,
+                        }
+                        : null;
+
+                    const { authorId, ...rPostData } = r;
+                    refsMap[String(r._id)] = {
+                        post: {
+                            ...rPostData,
+                            id: r._id,
+                        },
+                        author: userObj,
+                    };
+                }
+            }
+
             const data = posts.map(post => {
                 const userObj = post.authorId && typeof post.authorId === 'object'
                     ? {
@@ -214,12 +294,17 @@ export class PostService {
 
                 const { authorId, ...postData } = post.toObject();
 
+                const refId = post.sharedFromPostId ? String(post.sharedFromPostId) : (post.originalPostId ? String(post.originalPostId) : null);
+                const referenced = refId ? (refsMap[refId] || null) : null;
+
                 return {
                     post: {
                         ...postData,
                         id: post._id,
                     },
                     author: userObj,
+                    sharedPost: post.sharedFromPostId ? referenced : null,
+                    originalPost: (!post.sharedFromPostId && post.originalPostId) ? referenced : null,
                 };
             });
 
@@ -259,6 +344,43 @@ export class PostService {
 
             const total = await this.postModel.countDocuments({ authorId: user._id, isDeleted: true });
 
+            // collect referenced post ids from the page
+            const referencedIds = new Set<string>();
+            for (const p of posts) {
+                if ((p as any).sharedFromPostId) referencedIds.add(String((p as any).sharedFromPostId));
+                else if ((p as any).originalPostId) referencedIds.add(String((p as any).originalPostId));
+            }
+
+            // fetch referenced posts in batch with their authors
+            let refsMap: Record<string, any> = {};
+            if (referencedIds.size > 0) {
+                const refs = await this.postModel
+                    .find({ _id: { $in: Array.from(referencedIds).map(id => new Types.ObjectId(id)) } })
+                    .populate('authorId')
+                    .lean()
+                    .exec();
+
+                for (const r of refs) {
+                    const userObj = r.authorId && typeof r.authorId === 'object'
+                        ? {
+                            id: (r.authorId as any)._id,
+                            username: (r.authorId as any).username,
+                            fullName: (r.authorId as any).fullName,
+                            avatarUrl: (r.authorId as any).avatarUrl,
+                        }
+                        : null;
+
+                    const { authorId, ...rPostData } = r;
+                    refsMap[String(r._id)] = {
+                        post: {
+                            ...rPostData,
+                            id: r._id,
+                        },
+                        author: userObj,
+                    };
+                }
+            }
+
             const data = posts.map(post => {
                 const userObj = post.authorId && typeof post.authorId === 'object'
                     ? {
@@ -271,12 +393,17 @@ export class PostService {
 
                 const { authorId, ...postData } = post.toObject();
 
+                const refId = post.sharedFromPostId ? String(post.sharedFromPostId) : (post.originalPostId ? String(post.originalPostId) : null);
+                const referenced = refId ? (refsMap[refId] || null) : null;
+
                 return {
                     post: {
                         ...postData,
                         id: post._id,
                     },
                     author: userObj,
+                    sharedPost: post.sharedFromPostId ? referenced : null,
+                    originalPost: (!post.sharedFromPostId && post.originalPostId) ? referenced : null,
                 };
             });
 
@@ -339,6 +466,34 @@ export class PostService {
 
             const { authorId, ...postData } = post.toObject();
 
+            // fetch referenced post if any (prefer sharedFromPostId)
+            const refId = (post as any).sharedFromPostId ? String((post as any).sharedFromPostId)
+                : (post as any).originalPostId ? String((post as any).originalPostId) : null;
+
+            let referenced: any = null;
+            if (refId) {
+                const r = await this.postModel.findById(new Types.ObjectId(refId)).populate('authorId').lean().exec();
+                if (r) {
+                    const userObj = r.authorId && typeof r.authorId === 'object'
+                        ? {
+                            id: (r.authorId as any)._id,
+                            username: (r.authorId as any).username,
+                            fullName: (r.authorId as any).fullName,
+                            avatarUrl: (r.authorId as any).avatarUrl,
+                        }
+                        : null;
+
+                    const { authorId: rAuthorId, ...rPostData } = r;
+                    referenced = {
+                        post: {
+                            ...rPostData,
+                            id: r._id,
+                        },
+                        author: userObj,
+                    };
+                }
+            }
+
             const data = {
                 post: {
                     ...postData,
@@ -346,6 +501,8 @@ export class PostService {
                 },
                 author: authorId,
                 comments: commentWithReplies,
+                sharedPost: (post as any).sharedFromPostId ? referenced : null,
+                originalPost: (!(post as any).sharedFromPostId && (post as any).originalPostId) ? referenced : null,
             };
 
             return new ApiResponseDto(data, "Get post detail successfully", true);

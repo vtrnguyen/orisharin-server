@@ -40,28 +40,35 @@ export class NotificationService {
     }
 
     async findByUser(userId: string) {
-        const notifications = await this.notificationModel
-            .find({ recipientId: new Types.ObjectId(userId) })
-            .populate('fromUserId', 'fullName username avatarUrl')
-            .populate('postId', 'content')
-            .sort({ createdAt: -1 })
-            .exec();
+        try {
+            const notifications = await this.notificationModel
+                .find({ recipientId: new Types.ObjectId(userId) })
+                .populate('fromUserId', 'fullName username avatarUrl')
+                .populate('postId', 'content')
+                .sort({ createdAt: -1 })
+                .exec();
 
-        return notifications.map(n => {
-            const fromUser = n.fromUserId && typeof n.fromUserId === 'object' && 'fullName' in n.fromUserId
-                ? n.fromUserId as { fullName?: string; username?: string; avatarUrl?: string }
-                : null;
-            const post = n.postId && typeof n.postId === 'object' && 'content' in n.postId
-                ? n.postId as { content?: string }
-                : null;
+            const mapped = notifications.map(n => {
+                const fromUser = n.fromUserId && typeof n.fromUserId === 'object' && 'fullName' in n.fromUserId
+                    ? n.fromUserId as { fullName?: string; username?: string; avatarUrl?: string }
+                    : null;
+                const post = n.postId && typeof n.postId === 'object' && 'content' in n.postId
+                    ? n.postId as { content?: string }
+                    : null;
 
-            return {
-                ...n.toObject(),
-                senderName: fromUser?.fullName || fromUser?.username || null,
-                senderAvatar: fromUser?.avatarUrl || null,
-                content: post?.content || null,
-            };
-        });
+                return {
+                    ...n.toObject(),
+                    senderName: fromUser?.fullName || null,
+                    senderUsername: fromUser?.username || null,
+                    senderAvatar: fromUser?.avatarUrl || null,
+                    content: post?.content || null,
+                };
+            });
+
+            return new ApiResponseDto(mapped, "Get notifications successfully", true);
+        } catch (error: any) {
+            return new ApiResponseDto(null, error?.message, false, "Get notifications failed");
+        }
     }
 
     async markAsRead(id: string) {

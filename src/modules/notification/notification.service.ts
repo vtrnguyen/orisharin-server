@@ -2,7 +2,6 @@ import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Notification, NotificationDocument } from './schemas/notification.schema/notification.schema';
-import { ppid } from 'process';
 import { ApiResponseDto } from 'src/common/dtos/api-response.dto';
 
 @Injectable()
@@ -13,7 +12,31 @@ export class NotificationService {
     ) { }
 
     async create(notificationData: Partial<Notification>) {
-        return this.notificationModel.create(notificationData);
+        const notification = await this.notificationModel.create(notificationData);
+
+        const populatedNotification = await this.notificationModel
+            .findById(notification._id)
+            .populate('fromUserId', 'fullName username avatarUrl')
+            .populate('postId', 'content')
+            .exec();
+
+        if (!populatedNotification) {
+            return notification;
+        }
+
+        const fromUser = populatedNotification.fromUserId && typeof populatedNotification.fromUserId === 'object' && 'fullName' in populatedNotification.fromUserId
+            ? populatedNotification.fromUserId as { fullName?: string; username?: string; avatarUrl?: string }
+            : null;
+        const post = populatedNotification.postId && typeof populatedNotification.postId === 'object' && 'content' in populatedNotification.postId
+            ? populatedNotification.postId as { content?: string }
+            : null;
+
+        return {
+            ...populatedNotification.toObject(),
+            senderName: fromUser?.fullName || fromUser?.username || null,
+            senderAvatar: fromUser?.avatarUrl || null,
+            content: post?.content || null,
+        };
     }
 
     async findByUser(userId: string) {

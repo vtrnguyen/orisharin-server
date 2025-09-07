@@ -7,7 +7,9 @@ import { MessageService } from "./message.service";
 @WebSocketGateway({ cors: { origin: '*' }, namespace: "/" })
 @Injectable()
 export class MessageGateway implements OnGatewayConnection, OnGatewayDisconnect {
-    @WebSocketServer() server: Server;
+    @WebSocketServer()
+    server: Server;
+
     private userSockets = new Map<string, Set<string>>();
 
     constructor(

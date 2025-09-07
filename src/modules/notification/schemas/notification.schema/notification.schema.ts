@@ -11,7 +11,7 @@ export class Notification {
     @Prop({ type: Types.ObjectId, ref: 'User' })
     fromUserId: Types.ObjectId;
 
-    @Prop({ enum: ['like', 'comment', 'follow', 'repost', 'message', 'call'], required: true })
+    @Prop({ enum: ['like', 'comment', 'reply', 'follow', 'repost', 'message', 'call'], required: true })
     type: string;
 
     @Prop({ type: Types.ObjectId })

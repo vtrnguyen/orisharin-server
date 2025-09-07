@@ -4,6 +4,8 @@ import { Model, Types } from 'mongoose';
 import { Follow, FollowDocument } from './schemas/follow.schema/follow.schema';
 import { User, UserDocument } from '../user/schemas/user.schema/user.schema';
 import { ApiResponseDto } from 'src/common/dtos/api-response.dto';
+import { NotificationService } from '../notification/notification.service';
+import { NotificationGateway } from '../notification/notification.gateway';
 
 @Injectable()
 export class FollowService {
@@ -12,6 +14,8 @@ export class FollowService {
         private readonly followModel: Model<FollowDocument>,
         @InjectModel(User.name)
         private readonly userModel: Model<UserDocument>,
+        private readonly notificationService: NotificationService,
+        private readonly notificationGateway: NotificationGateway,
     ) { }
 
     async follow(followerId: string, followingId: string) {
@@ -28,6 +32,30 @@ export class FollowService {
                 followingId,
                 { $inc: { followersCount: 1 } },
             );
+
+            // create notification for the followed user
+            try {
+                const notificationPayload: Partial<any> = {
+                    recipientId: new Types.ObjectId(followingId),
+                    fromUserId: new Types.ObjectId(followerId),
+                    type: 'follow',
+                };
+
+                const created = await this.notificationService.create(notificationPayload);
+
+                let notificationToSend: any = null;
+                if (created && typeof created === 'object' && 'data' in created) {
+                    notificationToSend = created.data;
+                } else {
+                    notificationToSend = created;
+                }
+
+                if (notificationToSend) {
+                    try {
+                        this.notificationGateway.sendNotification(followingId, notificationToSend);
+                    } catch (e) { }
+                }
+            } catch (error: any) { }
 
             return new ApiResponseDto(follow, "follow successfully", true);
         } catch (error: any) {

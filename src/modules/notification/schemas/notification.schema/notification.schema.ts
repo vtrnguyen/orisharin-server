@@ -14,13 +14,13 @@ export class Notification {
     @Prop({ enum: ['like', 'comment', 'reply', 'follow', 'repost', 'message', 'call'], required: true })
     type: string;
 
-    @Prop({ type: Types.ObjectId })
+    @Prop({ type: Types.ObjectId, ref: 'Post' })
     postId?: Types.ObjectId;
 
-    @Prop({ type: Types.ObjectId })
+    @Prop({ type: Types.ObjectId, ref: 'Comment' })
     commentId?: Types.ObjectId;
 
-    @Prop({ type: Types.ObjectId })
+    @Prop({ type: Types.ObjectId, ref: 'Message' })
     messageId?: Types.ObjectId;
 
     @Prop({ default: false })

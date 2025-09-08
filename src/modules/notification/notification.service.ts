@@ -18,6 +18,7 @@ export class NotificationService {
             .findById(notification._id)
             .populate('fromUserId', 'fullName username avatarUrl')
             .populate('postId', 'content')
+            .populate('commentId', 'content')
             .exec();
 
         if (!populatedNotification) {
@@ -30,12 +31,16 @@ export class NotificationService {
         const post = populatedNotification.postId && typeof populatedNotification.postId === 'object' && 'content' in populatedNotification.postId
             ? populatedNotification.postId as { content?: string }
             : null;
+        const comment = populatedNotification.commentId && typeof populatedNotification.commentId === 'object' && 'content' in populatedNotification.commentId
+            ? populatedNotification.commentId as { content?: string }
+            : null;
 
         return {
             ...populatedNotification.toObject(),
             senderName: fromUser?.fullName || fromUser?.username || null,
             senderAvatar: fromUser?.avatarUrl || null,
             content: post?.content || null,
+            commentContent: comment?.content || null,
         };
     }
 
@@ -45,6 +50,7 @@ export class NotificationService {
                 .find({ recipientId: new Types.ObjectId(userId) })
                 .populate('fromUserId', 'fullName username avatarUrl')
                 .populate('postId', 'content')
+                .populate('commentId', 'content')
                 .sort({ createdAt: -1 })
                 .exec();
 
@@ -55,6 +61,9 @@ export class NotificationService {
                 const post = n.postId && typeof n.postId === 'object' && 'content' in n.postId
                     ? n.postId as { content?: string }
                     : null;
+                const comment = n.commentId && typeof n.commentId === 'object' && 'content' in n.commentId
+                    ? n.commentId as { content?: string }
+                    : null;
 
                 return {
                     ...n.toObject(),
@@ -62,6 +71,7 @@ export class NotificationService {
                     senderUsername: fromUser?.username || null,
                     senderAvatar: fromUser?.avatarUrl || null,
                     content: post?.content || null,
+                    commentContent: comment?.content || null,
                 };
             });
 

@@ -103,28 +103,55 @@ export class MessageService {
         }
     }
 
-    async revoke(messageId: string, userId: string) {
+    async revoke(messageId: string, userId: string, forAll: boolean = false) {
         try {
             const msg: any = await this.messageModel.findById(messageId).exec();
             if (!msg) return new ApiResponseDto(null, "message not found", false, "message not found");
 
-            const msgObjectId = new Types.ObjectId(msg.senderId);
-            if (!msg.senderId || msgObjectId.toString() !== userId) return new ApiResponseDto(null, "unauthorized", false, "you are not the sender");
-
-            const mediaUrls: string[] = Array.isArray(msg.mediaUrls) ? msg.mediaUrls.slice() : [];
-            const publicIds: string[] = [];
-            for (const url of mediaUrls) {
-                const pid = extractCloudinaryPublicId(url);
-                if (pid) publicIds.push(pid);
+            const msgSenderId = String((msg.senderId && (msg.senderId._id ? msg.senderId._id : msg.senderId)) ?? msg.senderId);
+            if (!msg.senderId || msgSenderId !== String(userId)) {
+                return new ApiResponseDto(null, "unauthorized", false, "you are not the sender");
             }
 
-            if (publicIds.length > 0) {
-                await Promise.allSettled(publicIds.map(pid => this.cloudinaryService.deleteImage(pid)));
+            if (forAll) {
+                const updatedMsg = await this.messageModel.findByIdAndUpdate(
+                    messageId,
+                    { $set: { isHideAll: true }, $unset: { hideForUsers: "" } },
+                    { new: true }
+                ).exec();
+
+                try {
+                    const convId = String(msg.conversationId);
+                    if (updatedMsg) {
+                        const senderRef = (updatedMsg.senderId && (updatedMsg.senderId as any)._id)
+                            ? (updatedMsg.senderId as any)._id
+                            : updatedMsg.senderId;
+
+                        await this.conversationModel.findByIdAndUpdate(convId, {
+                            lastMessageId: updatedMsg._id,
+                            lastMessage: {
+                                _id: updatedMsg._id,
+                                content: 'Đã thu hồi một tin nhắn',
+                                mediaUrls: updatedMsg.mediaUrls || [],
+                                senderId: senderRef,
+                                type: updatedMsg.type || 'text',
+                                sentAt: updatedMsg.sentAt || new Date(),
+                                isHideAll: true
+                            }
+                        }).exec();
+                    }
+                } catch (e) { }
+
+                return new ApiResponseDto({ id: messageId, conversationId: String(msg.conversationId), forAll: true }, "message hidden for all", true);
+            } else {
+                await this.messageModel.findByIdAndUpdate(
+                    messageId,
+                    { $addToSet: { hideForUsers: new Types.ObjectId(userId) }, $set: { isHideAll: false } },
+                    { new: true }
+                ).exec();
+
+                return new ApiResponseDto({ id: messageId, conversationId: String(msg.conversationId), hiddenForUserId: userId }, "message hidden for user", true);
             }
-
-            await this.messageModel.findByIdAndDelete(messageId).exec();
-
-            return new ApiResponseDto({ id: messageId, conversationId: String(msg.conversationId) }, "message deleted", true);
         } catch (error: any) {
             return new ApiResponseDto(null, error.message || "delete failed", false, "delete failed");
         }

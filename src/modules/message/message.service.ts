@@ -25,7 +25,32 @@ export class MessageService {
         const populatedMessage = await this.messageModel
             .findById(message._id)
             .populate("senderId", "fullName username avatarUrl")
+            .populate({ path: "reactions.userId", select: "fullName username avatarUrl" })
             .exec();
+
+        try {
+            if (populatedMessage) {
+                const senderRef = (populatedMessage.senderId && (populatedMessage.senderId as any)._id)
+                    ? (populatedMessage.senderId as any)._id
+                    : populatedMessage.senderId;
+
+                await this.conversationModel.findByIdAndUpdate(
+                    String(populatedMessage.conversationId),
+                    {
+                        lastMessageId: populatedMessage._id,
+                        lastMessage: {
+                            _id: populatedMessage._id,
+                            content: populatedMessage.content || '',
+                            mediaUrls: populatedMessage.mediaUrls || [],
+                            senderId: senderRef,
+                            type: populatedMessage.type || 'text',
+                            sentAt: populatedMessage.sentAt || new Date(),
+                        }
+                    },
+                    { new: true },
+                ).exec();
+            }
+        } catch (error: any) { }
 
         return populatedMessage;
     }

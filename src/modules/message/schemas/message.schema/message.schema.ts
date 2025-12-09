@@ -12,6 +12,16 @@ const ReactionSchema = new MongooseSchema(
     { _id: false }
 );
 
+const UpdateMessageSchema = new MongooseSchema(
+    {
+        updatedAt: { type: Date, required: true, default: Date.now },
+        content: { type: String, default: '' },
+        mediaUrls: { type: [String], default: [] },
+        editedBy: { type: Types.ObjectId, ref: 'User', required: false },
+    },
+    { _id: false }
+);
+
 @Schema({ timestamps: false })
 export class Message {
     @Prop({ type: Types.ObjectId, ref: 'Conversation', required: true })
@@ -34,6 +44,27 @@ export class Message {
 
     @Prop({ type: Map, of: Number, default: {} })
     reactionsCount?: Map<string, number>;
+
+    @Prop({ type: String, enum: ['text', 'image', 'video', 'file', 'audio', 'system'], default: 'text' })
+    type?: string;
+
+    @Prop({ type: [Types.ObjectId], ref: 'User', default: [] })
+    hideForUsers?: Types.ObjectId[];
+
+    @Prop({ type: Boolean, default: false })
+    isHideAll?: boolean;
+
+    @Prop({ type: [Types.ObjectId], ref: 'User', default: [] })
+    userTagIds?: Types.ObjectId[];
+
+    @Prop({ type: [UpdateMessageSchema], default: [] })
+    updateMessages?: { updatedAt: Date; content?: string; mediaUrls?: string[]; editedBy?: Types.ObjectId }[];
+
+    @Prop({ type: Boolean, default: false })
+    isPinned?: boolean;
+
+    @Prop({ type: Types.ObjectId, ref: 'Message', required: false })
+    messageReply?: Types.ObjectId;
 
     @Prop({ default: Date.now })
     sentAt: Date;

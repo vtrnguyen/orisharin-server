@@ -412,13 +412,7 @@ export class ConversationService {
             }));
 
             const data = {
-                conversation: {
-                    id: conv._id,
-                    isGroup: conv.isGroup,
-                    name: conv.name,
-                    avatarUrl: conv.avatarUrl || '',
-                    createdBy: conv.createdBy,
-                },
+                conversation: conv,
                 participants,
             };
 
@@ -457,15 +451,7 @@ export class ConversationService {
                 }));
 
                 return {
-                    conversation: {
-                        id: conv._id,
-                        isGroup: conv.isGroup,
-                        name: conv.name,
-                        avatarUrl: conv.avatarUrl || '',
-                        createdBy: conv.createdBy,
-                        createdAt: conv.createdAt,
-                        updatedAt: conv.updatedAt,
-                    },
+                    conversation: conv,
                     participants
                 };
             })

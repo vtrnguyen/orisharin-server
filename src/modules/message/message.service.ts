@@ -25,6 +25,18 @@ export class MessageService {
         const createdIds: Types.ObjectId[] = [];
         const nowBase = messageData.sentAt ? new Date(messageData.sentAt).getTime() : Date.now();
 
+        // normalize senderId to ObjectId when possible
+        let canonicalSenderId: Types.ObjectId | undefined = undefined;
+        try {
+            if (messageData.senderId) {
+                canonicalSenderId = messageData.senderId instanceof Types.ObjectId
+                    ? messageData.senderId
+                    : new Types.ObjectId(String(messageData.senderId));
+            }
+        } catch (e) {
+            canonicalSenderId = undefined;
+        }
+
         try {
             if (mediaUrls.length > 0) {
                 for (let i = 0; i < mediaUrls.length; i++) {
@@ -33,6 +45,7 @@ export class MessageService {
                     const sentAt = new Date(nowBase + i);
                     const md: Partial<Message> = {
                         ...messageData,
+                        senderId: canonicalSenderId ?? (messageData.senderId as any),
                         content: '',
                         mediaUrls: [url],
                         type: inferred,
@@ -47,6 +60,7 @@ export class MessageService {
                     const textType = providedType && providedType !== 'system' ? providedType : 'text';
                     const md: Partial<Message> = {
                         ...messageData,
+                        senderId: canonicalSenderId ?? (messageData.senderId as any),
                         content,
                         mediaUrls: [],
                         type: textType,
@@ -59,6 +73,7 @@ export class MessageService {
                 const singleType = providedType || (messageData.type || 'text');
                 const md: Partial<Message> = {
                     ...messageData,
+                    senderId: canonicalSenderId ?? (messageData.senderId as any),
                     type: singleType,
                     sentAt: messageData.sentAt || new Date(),
                 };
@@ -70,15 +85,27 @@ export class MessageService {
                 .populate("senderId", "fullName username avatarUrl")
                 .populate({ path: "reactions.userId", select: "fullName username avatarUrl" })
                 .sort({ sentAt: 1 })
+                .lean()
                 .exec();
 
-            const lastMsg = populated[populated.length - 1];
+            const normalized = (populated || []).map((m: any) => {
+                const s = m.senderId;
+                if (!s) {
+                    m.senderId = null;
+                    return m;
+                }
+                if (typeof s === 'string' || (s && typeof s === 'object' && !('username' in s) && !('fullName' in s) && '_id' in s)) {
+                    m.senderId = { _id: s };
+                } else {
+                    m.senderId = s;
+                }
+                return m;
+            });
+
+            const lastMsg = normalized[normalized.length - 1];
             if (lastMsg) {
                 try {
-                    const senderRef = (lastMsg.senderId && (lastMsg.senderId as any)._id)
-                        ? (lastMsg.senderId as any)._id
-                        : lastMsg.senderId;
-
+                    const senderRef = lastMsg.senderId && (lastMsg.senderId._id ? lastMsg.senderId._id : lastMsg.senderId);
                     await this.conversationModel.findByIdAndUpdate(
                         String(lastMsg.conversationId),
                         {
@@ -97,7 +124,7 @@ export class MessageService {
                 } catch (e) { }
             }
 
-            return populated.length === 1 ? populated[0] : populated;
+            return normalized.length === 1 ? normalized[0] : normalized;
         } catch (error: any) {
             throw error;
         }

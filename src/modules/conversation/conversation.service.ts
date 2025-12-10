@@ -6,6 +6,8 @@ import { ApiResponseDto } from 'src/common/dtos/api-response.dto';
 import { User, UserDocument } from '../user/schemas/user.schema/user.schema';
 import { extractCloudinaryPublicId } from 'src/common/functions/extract-cloudinary-public-id';
 import { CloudinaryService } from 'src/common/cloudinary/cloudinary.service';
+import { MessageService } from '../message/message.service';
+import { MessageGateway } from '../message/message.gateway';
 
 @Injectable()
 export class ConversationService {
@@ -14,7 +16,9 @@ export class ConversationService {
         private readonly conversationModel: Model<ConversationDocument>,
         @InjectModel(User.name)
         private readonly userModel: Model<UserDocument>,
-        private cloudinaryService: CloudinaryService
+        private cloudinaryService: CloudinaryService,
+        private messageService: MessageService,
+        private messageGateway: MessageGateway,
     ) { }
 
     async create(conversationData: Partial<Conversation>, createdById?: string) {
@@ -143,6 +147,28 @@ export class ConversationService {
             conv.avatarUrl = newUrl;
             await conv.save();
 
+            // create a system message indicating avatar change
+            try {
+                const user = await this.userModel.findById(userId).lean().exec();
+                const displayName = user ? (user.fullName || user.username || 'Someone') : 'Someone';
+
+                const md: Partial<any> = {
+                    conversationId: conv._id,
+                    senderId: new Types.ObjectId(String(userId)),
+                    content: `${displayName} changed the conversation avatar`,
+                    type: 'system',
+                    sentAt: new Date(),
+                };
+
+                const created = await this.messageService.create(md);
+
+                if (created) {
+                    await this.messageGateway.broadcastMessageToConversation(conversationId, created);
+                }
+            } catch (error: any) {
+                console.warn("failed to create/broadcast system message for conversation avatar change", error);
+            }
+
             const populated = await this.conversationModel
                 .findById(conv._id)
                 .populate('participantIds', 'username fullName avatarUrl')
@@ -169,6 +195,28 @@ export class ConversationService {
 
             conv.name = String(name).trim();
             await conv.save();
+
+            // create a system message indicating name change
+            try {
+                const user = await this.userModel.findById(userId).lean().exec();
+                const displayName = user ? (user.fullName || user.username || 'Someone') : 'Someone';
+
+                const md: Partial<any> = {
+                    conversationId: conv._id,
+                    senderId: new Types.ObjectId(String(userId)),
+                    content: `${displayName} changed the conversation name to "${conv.name}"`,
+                    type: 'system',
+                    sentAt: new Date(),
+                };
+
+                const created = await this.messageService.create(md);
+
+                if (created) {
+                    await this.messageGateway.broadcastMessageToConversation(conversationId, created);
+                }
+            } catch (error: any) {
+                console.warn("failed to create/broadcast system message for conversation rename", error);
+            }
 
             const populated = await this.conversationModel
                 .findById(conv._id)

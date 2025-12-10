@@ -1,4 +1,4 @@
-import { Module } from "@nestjs/common";
+import { forwardRef, Module } from "@nestjs/common";
 import { MongooseModule } from "@nestjs/mongoose";
 import { Message, MessageSchema } from "./schemas/message.schema/message.schema";
 import { MessageController } from "./message.controller";
@@ -8,6 +8,7 @@ import { MessageGateway } from "./message.gateway";
 import { JwtModule } from "@nestjs/jwt";
 import { ConfigModule, ConfigService } from "@nestjs/config";
 import { CloudinaryModule } from "src/common/cloudinary/cloudinary.module";
+import { ConversationModule } from "../conversation/conversation.module";
 
 @Module({
     imports: [
@@ -26,10 +27,11 @@ import { CloudinaryModule } from "src/common/cloudinary/cloudinary.module";
             }),
             inject: [ConfigService],
         }),
+        forwardRef(() => ConversationModule),
         CloudinaryModule,
     ],
     controllers: [MessageController],
     providers: [MessageService, MessageGateway],
-    exports: [MessageService],
+    exports: [MessageService, MessageGateway],
 })
 export class MessageModule { }

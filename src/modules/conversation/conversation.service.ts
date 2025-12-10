@@ -155,7 +155,7 @@ export class ConversationService {
                 const md: Partial<any> = {
                     conversationId: conv._id,
                     senderId: new Types.ObjectId(String(userId)),
-                    content: `${displayName} changed the conversation avatar`,
+                    content: `${displayName} changed the conversation avatar.`,
                     type: 'system',
                     sentAt: new Date(),
                 };
@@ -204,7 +204,7 @@ export class ConversationService {
                 const md: Partial<any> = {
                     conversationId: conv._id,
                     senderId: new Types.ObjectId(String(userId)),
-                    content: `${displayName} changed the conversation name to "${conv.name}"`,
+                    content: `${displayName} changed the conversation name to "${conv.name}".`,
                     type: 'system',
                     sentAt: new Date(),
                 };
@@ -285,6 +285,37 @@ export class ConversationService {
                 .populate('participantIds', 'username fullName avatarUrl')
                 .lean()
                 .exec();
+
+            // create a system message indicating new participants added
+            try {
+                // adder info
+                const actorUser = await this.userModel.findById(currentUserId).lean().exec();
+                const actorName = actorUser ? (actorUser.fullName || actorUser.username || 'Someone') : 'Someone';
+                // first added users info
+                const addedDocs = (existingUsers || []).filter((u: any) => toAddIds.includes(String(u._id)));
+                const firstAddedName = addedDocs[0] ? (addedDocs[0].fullName || addedDocs[0].username || 'Someone') : (toAddIds[0] || 'Someone');
+
+                let content: string = '';
+                if (toAddIds.length === 1) {
+                    content = `${actorName} added ${firstAddedName} to the group.`;
+                } else {
+                    const others = toAddIds.length - 1;
+                    content = `${actorName} added ${firstAddedName} and ${others} other${others > 1 ? 's' : ''} to the group.`;
+                }
+
+                const md: Partial<any> = {
+                    conversationId: conv._id,
+                    senderId: new Types.ObjectId(String(currentUserId)),
+                    content,
+                    type: 'system',
+                    sentAt: new Date(),
+                };
+
+                const created = await this.messageService.create(md);
+                await this.messageGateway.broadcastMessageToConversation(conversationId, created);
+            } catch (error: any) {
+                console.warn("failed to create/broadcast system message for adding participants", error);
+            }
 
             // built added/skipped arrays for response
             const added = toAddIds;
@@ -370,6 +401,38 @@ export class ConversationService {
                 .lean()
                 .exec();
 
+            // create a system message indicating participants removed
+            try {
+                const actorUser = await this.userModel.findById(currentUserId).lean().exec();
+                const actorName = actorUser ? (actorUser.fullName || actorUser.username || 'Someone') : 'Someone';
+
+                const removedDocs = (existingUsers || []).filter((u: any) => toRemoveIds.includes(String(u._id)));
+                const firstRemovedName = removedDocs[0] ? (removedDocs[0].fullName || removedDocs[0].username || 'Someone') : (toRemoveIds[0] || 'Someone');
+
+                let content: string = '';
+                if (toRemoveIds.length === 1) {
+                    content = `${actorName} removed ${firstRemovedName} from the group.`;
+                } else {
+                    const others = toRemoveIds.length - 1;
+                    content = `${actorName} removed ${firstRemovedName} and ${others} other${others > 1 ? 's' : ''} from the group.`;
+                }
+
+                const md: Partial<any> = {
+                    conversationId: conv._id,
+                    senderId: new Types.ObjectId(String(currentUserId)),
+                    content,
+                    type: 'system',
+                    sentAt: new Date(),
+                };
+
+                const created = await this.messageService.create(md);
+                if (created) {
+                    await this.messageGateway.broadcastMessageToConversation(conversationId, created);
+                }
+            } catch (err: any) {
+                console.warn('failed to create/broadcast system message for removed participants', err);
+            }
+
             const removed = toRemoveIds;
             const skipped = incoming.filter(id => !removed.includes(id) && !notFound.includes(id)); // e.g. not participants or creator
 
@@ -420,6 +483,29 @@ export class ConversationService {
                 .populate('participantIds', 'username fullName avatarUrl')
                 .lean()
                 .exec();
+
+            // create a system message indicating user left
+            try {
+                const actorUser = await this.userModel.findById(currentUserId).lean().exec();
+                const actorName = actorUser ? (actorUser.fullName || actorUser.username || 'Someone') : 'Someone';
+
+                const content = `${actorName} left the group.`;
+
+                const md: Partial<any> = {
+                    conversationId: conv._id,
+                    senderId: new Types.ObjectId(String(currentUserId)),
+                    content,
+                    type: 'system',
+                    sentAt: new Date(),
+                };
+
+                const created = await this.messageService.create(md as any);
+                if (created) {
+                    await this.messageGateway.broadcastMessageToConversation(conversationId, created);
+                }
+            } catch (err: any) {
+                console.warn('failed to create/broadcast system message for leaving conversation', err);
+            }
 
             return new ApiResponseDto({ conversation: populatedAfter }, "You have left the conversation", true);
         } catch (error: any) {

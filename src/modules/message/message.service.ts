@@ -19,39 +19,139 @@ export class MessageService {
     ) { }
 
     async create(messageData: Partial<Message>) {
-        const message = await this.messageModel.create(messageData);
+        const mediaUrls: string[] = Array.isArray(messageData.mediaUrls) ? messageData.mediaUrls.slice() : [];
+        const content = (messageData.content || '').toString();
+        const providedType = (messageData as any).type as string | undefined;
+        const createdIds: Types.ObjectId[] = [];
+        const nowBase = messageData.sentAt ? new Date(messageData.sentAt).getTime() : Date.now();
 
-        // Populate sender info for realtime broadcast
-        const populatedMessage = await this.messageModel
-            .findById(message._id)
-            .populate("senderId", "fullName username avatarUrl")
-            .exec();
+        try {
+            if (mediaUrls.length > 0) {
+                for (let i = 0; i < mediaUrls.length; i++) {
+                    const url = mediaUrls[i];
+                    const inferred = providedType || this.inferTypeFromUrl(url);
+                    const sentAt = new Date(nowBase + i);
+                    const md: Partial<Message> = {
+                        ...messageData,
+                        content: '',
+                        mediaUrls: [url],
+                        type: inferred,
+                        sentAt,
+                    };
+                    const created = await this.messageModel.create(md);
+                    createdIds.push(created._id as Types.ObjectId);
+                }
 
-        return populatedMessage;
+                if (content && content.trim() !== '') {
+                    const sentAt = new Date(nowBase + mediaUrls.length);
+                    const textType = providedType && providedType !== 'system' ? providedType : 'text';
+                    const md: Partial<Message> = {
+                        ...messageData,
+                        content,
+                        mediaUrls: [],
+                        type: textType,
+                        sentAt,
+                    };
+                    const created = await this.messageModel.create(md);
+                    createdIds.push(created._id as Types.ObjectId);
+                }
+            } else {
+                const singleType = providedType || (messageData.type || 'text');
+                const md: Partial<Message> = {
+                    ...messageData,
+                    type: singleType,
+                    sentAt: messageData.sentAt || new Date(),
+                };
+                const created = await this.messageModel.create(md);
+                createdIds.push(created._id as Types.ObjectId);
+            }
+
+            const populated = await this.messageModel.find({ _id: { $in: createdIds } })
+                .populate("senderId", "fullName username avatarUrl")
+                .populate({ path: "reactions.userId", select: "fullName username avatarUrl" })
+                .sort({ sentAt: 1 })
+                .exec();
+
+            const lastMsg = populated[populated.length - 1];
+            if (lastMsg) {
+                try {
+                    const senderRef = (lastMsg.senderId && (lastMsg.senderId as any)._id)
+                        ? (lastMsg.senderId as any)._id
+                        : lastMsg.senderId;
+
+                    await this.conversationModel.findByIdAndUpdate(
+                        String(lastMsg.conversationId),
+                        {
+                            lastMessageId: lastMsg._id,
+                            lastMessage: {
+                                _id: lastMsg._id,
+                                content: lastMsg.content || '',
+                                mediaUrls: lastMsg.mediaUrls || [],
+                                senderId: senderRef,
+                                type: lastMsg.type || 'text',
+                                sentAt: lastMsg.sentAt || new Date(),
+                            }
+                        },
+                        { new: true }
+                    ).exec();
+                } catch (e) { }
+            }
+
+            return populated.length === 1 ? populated[0] : populated;
+        } catch (error: any) {
+            throw error;
+        }
     }
 
-    async revoke(messageId: string, userId: string) {
+    async revoke(messageId: string, userId: string, forAll: boolean = false) {
         try {
             const msg: any = await this.messageModel.findById(messageId).exec();
             if (!msg) return new ApiResponseDto(null, "message not found", false, "message not found");
 
-            const msgObjectId = new Types.ObjectId(msg.senderId);
-            if (!msg.senderId || msgObjectId.toString() !== userId) return new ApiResponseDto(null, "unauthorized", false, "you are not the sender");
-
-            const mediaUrls: string[] = Array.isArray(msg.mediaUrls) ? msg.mediaUrls.slice() : [];
-            const publicIds: string[] = [];
-            for (const url of mediaUrls) {
-                const pid = extractCloudinaryPublicId(url);
-                if (pid) publicIds.push(pid);
+            const msgSenderId = String((msg.senderId && (msg.senderId._id ? msg.senderId._id : msg.senderId)) ?? msg.senderId);
+            if (!msg.senderId || msgSenderId !== String(userId)) {
+                return new ApiResponseDto(null, "unauthorized", false, "you are not the sender");
             }
 
-            if (publicIds.length > 0) {
-                await Promise.allSettled(publicIds.map(pid => this.cloudinaryService.deleteImage(pid)));
+            if (forAll) {
+                const updatedMsg = await this.messageModel.findByIdAndUpdate(
+                    messageId,
+                    { $set: { isHideAll: true }, $unset: { hideForUsers: "" } },
+                    { new: true }
+                ).exec();
+
+                try {
+                    const convId = String(msg.conversationId);
+                    if (updatedMsg) {
+                        const senderRef = (updatedMsg.senderId && (updatedMsg.senderId as any)._id)
+                            ? (updatedMsg.senderId as any)._id
+                            : updatedMsg.senderId;
+
+                        await this.conversationModel.findByIdAndUpdate(convId, {
+                            lastMessageId: updatedMsg._id,
+                            lastMessage: {
+                                _id: updatedMsg._id,
+                                content: 'Đã thu hồi một tin nhắn',
+                                mediaUrls: updatedMsg.mediaUrls || [],
+                                senderId: senderRef,
+                                type: updatedMsg.type || 'text',
+                                sentAt: updatedMsg.sentAt || new Date(),
+                                isHideAll: true
+                            }
+                        }).exec();
+                    }
+                } catch (e) { }
+
+                return new ApiResponseDto({ id: messageId, conversationId: String(msg.conversationId), forAll: true }, "message hidden for all", true);
+            } else {
+                await this.messageModel.findByIdAndUpdate(
+                    messageId,
+                    { $addToSet: { hideForUsers: new Types.ObjectId(userId) }, $set: { isHideAll: false } },
+                    { new: true }
+                ).exec();
+
+                return new ApiResponseDto({ id: messageId, conversationId: String(msg.conversationId), hiddenForUserId: userId }, "message hidden for user", true);
             }
-
-            await this.messageModel.findByIdAndDelete(messageId).exec();
-
-            return new ApiResponseDto({ id: messageId, conversationId: String(msg.conversationId) }, "message deleted", true);
         } catch (error: any) {
             return new ApiResponseDto(null, error.message || "delete failed", false, "delete failed");
         }
@@ -205,5 +305,16 @@ export class MessageService {
             },
             { $addToSet: { seenBy: userId } }
         ).exec();
+    }
+
+    private inferTypeFromUrl(url: string): 'image' | 'video' | 'audio' | 'file' {
+        const imgExt = /\.(jpg|jpeg|png|gif|webp|svg)(\?.*)?$/i;
+        const videoExt = /\.(mp4|webm|ogg|mov|avi|mkv)(\?.*)?$/i;
+        const audioExt = /\.(mp3|wav|aac|m4a|ogg)(\?.*)?$/i;
+
+        if (videoExt.test(url)) return 'video';
+        if (imgExt.test(url)) return 'image';
+        if (audioExt.test(url)) return 'audio';
+        return 'file';
     }
 }

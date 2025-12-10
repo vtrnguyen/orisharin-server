@@ -68,7 +68,7 @@ export class MessageGateway implements OnGatewayConnection, OnGatewayDisconnect 
         }
 
         const { Types } = require('mongoose');
-        const msg = await this.messageService.create({
+        const result = await this.messageService.create({
             conversationId: new Types.ObjectId(payload.conversationId),
             senderId: new Types.ObjectId(senderId),
             content: payload.content,
@@ -77,11 +77,26 @@ export class MessageGateway implements OnGatewayConnection, OnGatewayDisconnect 
         });
 
         const participantIds = await this.messageService.getParticipants(payload.conversationId);
+
+        if (Array.isArray(result)) {
+            for (const singleMsg of result) {
+                for (const pid of participantIds) {
+                    const sockets = this.userSockets.get(pid.toString());
+                    if (sockets) {
+                        for (const sid of sockets) {
+                            this.server.to(sid).emit('message:created', singleMsg);
+                        }
+                    }
+                }
+            }
+            return;
+        }
+
         for (const pid of participantIds) {
             const sockets = this.userSockets.get(pid.toString());
             if (sockets) {
                 for (const sid of sockets) {
-                    this.server.to(sid).emit('message:created', msg);
+                    this.server.to(sid).emit('message:created', result);
                 }
             }
         }
@@ -89,23 +104,40 @@ export class MessageGateway implements OnGatewayConnection, OnGatewayDisconnect 
 
     public async broadcastMessageToConversation(conversationId: string, message: any) {
         const participantIds = await this.messageService.getParticipants(conversationId);
-        for (const pid of participantIds) {
-            const sockets = this.userSockets.get(pid.toString());
-            if (sockets) {
-                for (const sid of sockets) {
-                    this.server.to(sid).emit('message:created', message);
+
+        const messages = Array.isArray(message) ? message : [message];
+
+        for (const msg of messages) {
+            for (const pid of participantIds) {
+                const sockets = this.userSockets.get(pid.toString());
+                if (sockets) {
+                    for (const sid of sockets) {
+                        this.server.to(sid).emit('message:created', msg);
+                    }
                 }
             }
         }
     }
 
-    public async broadcastMessageDeleted(conversationId: string, messageId: string) {
+    public async broadcastMessageDeleted(conversationId: string, payload: any) {
         const participantIds = await this.messageService.getParticipants(conversationId);
+
+        if (payload && payload.hiddenForUserId) {
+            const uid = String(payload.hiddenForUserId);
+            const sockets = this.userSockets.get(uid);
+            if (sockets) {
+                for (const sid of sockets) {
+                    this.server.to(sid).emit('message:deleted', { id: payload.id, hiddenForUserId: uid });
+                }
+            }
+            return;
+        }
+
         for (const pid of participantIds) {
             const sockets = this.userSockets.get(pid.toString());
             if (sockets) {
                 for (const sid of sockets) {
-                    this.server.to(sid).emit('message:deleted', { id: messageId });
+                    this.server.to(sid).emit('message:deleted', { id: payload.id, forAll: !!payload.forAll });
                 }
             }
         }

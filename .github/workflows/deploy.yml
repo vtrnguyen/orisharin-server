@@ -1,4 +1,4 @@
-name: Deploy Backend
+name: Deploy OriSharin Backend
 
 on:
   push:
@@ -10,28 +10,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: npm
-
-      - name: Create .env from Secrets
-        run: |
-          cat > .env << EOF
-          NODE_ENV=production
-          PORT=3000
-          DATABASE_URI=${{ secrets.DATABASE_URI }}
-          JWT_SECRET=${{ secrets.JWT_SECRET }}
-          CLOUDINARY_CLOUD_NAME=${{ secrets.CLOUDINARY_CLOUD_NAME }}
-          CLOUDINARY_API_KEY=${{ secrets.CLOUDINARY_API_KEY }}
-          CLOUDINARY_API_SECRET=${{ secrets.CLOUDINARY_API_SECRET }}
-          TRANSLATE_PROVIDER=libre
-          TRANSLATE_URL=https://libretranslate.de
-          TRANSLATE_API_KEY=${{ secrets.TRANSLATE_API_KEY }}
-          EOF
-
-      - name: Deploy & Restart
+      - name: Deploy & Restart on VPS
         uses: appleboy/ssh-action@v0.1.10
         with:
           host: ${{ secrets.VPS_HOST }}
@@ -40,9 +19,30 @@ jobs:
           port: 22
           script: |
             cd /home/orisharin/apps/backend
-            git pull origin main
-            cp ~/.env .env || true
+            
+            # Pull latest code
+            git pull origin main || (git fetch && git reset --hard origin/main && git clean -fd)
+
+            # Create .env from GitHub Secrets
+            cat > .env << 'EOF'
+            NODE_ENV=production
+            PORT=3000
+            DATABASE_URI=${{ secrets.DATABASE_URI }}
+            JWT_SECRET=${{ secrets.JWT_SECRET }}
+            CLOUDINARY_CLOUD_NAME=${{ secrets.CLOUDINARY_CLOUD_NAME }}
+            CLOUDINARY_API_KEY=${{ secrets.CLOUDINARY_API_KEY }}
+            CLOUDINARY_API_SECRET=${{ secrets.CLOUDINARY_API_SECRET }}
+            TRANSLATE_PROVIDER=libre
+            TRANSLATE_URL=https://libretranslate.de
+            TRANSLATE_API_KEY=${{ secrets.TRANSLATE_API_KEY }}
+            EOF
+
+            # Install & build
             npm ci --production
             npm run build
+
+            # Restart PM2 (handles both dist/main.js and dist/src/main.js cases)
             pm2 restart orisharin-api || pm2 start dist/src/main.js --name "orisharin-api"
             pm2 save
+            
+            echo "Backend deployed successfully!"

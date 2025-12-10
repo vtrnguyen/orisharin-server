@@ -12,7 +12,10 @@ async function bootstrap() {
   app.use(bodyParser.urlencoded({ limit: '20mb', extended: true }));
 
   app.enableCors({
-    origin: "http://localhost:4200",
+    origin: [
+      "http://localhost:4200",
+      "http://146.196.64.84"
+    ],
     credentials: true,
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
     allowedHeaders: 'Content-Type, Authorization',

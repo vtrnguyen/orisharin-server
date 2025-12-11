@@ -230,6 +230,55 @@ export class ConversationService {
         }
     }
 
+    async updateTheme(conversationId: string, theme: string, userId: string) {
+        try {
+            if (!theme || String(theme).trim() === "") {
+                return new ApiResponseDto(null, "theme is required", false, "bad request");
+            }
+
+            const conv: any = await this.conversationModel.findById(conversationId).exec();
+            if (!conv) return new ApiResponseDto(null, "conversation not found", false, "conversation not found");
+
+            // verify participant
+            const isParticipant = (conv.participantIds || []).map((p: any) => String(p)).includes(String(userId));
+            if (!isParticipant) return new ApiResponseDto(null, "unauthorized", false, "you are not a participant of this conversation");
+
+            conv.theme = String(theme).trim();
+            await conv.save();
+
+            // create a system message to announce theme change
+            try {
+                const user = await this.userModel.findById(userId).lean().exec();
+                const displayName = user ? (user.fullName || user.username || 'Someone') : 'Someone';
+
+                const md: Partial<any> = {
+                    conversationId: conv._id,
+                    senderId: new Types.ObjectId(String(userId)),
+                    content: `${displayName} changed the conversation theme to "${conv.theme}".`,
+                    type: 'system',
+                    sentAt: new Date(),
+                };
+
+                const created = await this.messageService.create(md);
+                if (created) {
+                    await this.messageGateway.broadcastMessageToConversation(String(conv._id), created);
+                }
+            } catch (err: any) {
+                console.warn('failed to create/broadcast system message for theme change', err);
+            }
+
+            const populated = await this.conversationModel
+                .findById(conv._id)
+                .populate('participantIds', 'username fullName avatarUrl')
+                .lean()
+                .exec();
+
+            return new ApiResponseDto({ conversation: populated }, "theme updated successfully", true);
+        } catch (error: any) {
+            return new ApiResponseDto(null, error.message, false, "update theme failed");
+        }
+    }
+
     async addParticipants(conversationId: string, userIds: string[], currentUserId: string) {
         try {
             if (!userIds || !Array.isArray(userIds) || userIds.length === 0) {

@@ -70,6 +70,17 @@ export class ConversationController {
         return this.conversationService.updateName(id, body?.name, user.userId);
     }
 
+    @Patch(":id/theme")
+    @UseGuards(JwtAuthGuard)
+    async updateTheme(
+        @Param("id") id: string,
+        @Body() body: { theme: string },
+        @CurrentUser() user: any
+    ) {
+        const theme = body?.theme ?? '';
+        return this.conversationService.updateTheme(id, theme, user.userId);
+    }
+
     @Patch(":id/participants")
     @UseGuards(JwtAuthGuard)
     async addParticipants(

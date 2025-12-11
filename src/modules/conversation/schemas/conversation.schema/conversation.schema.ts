@@ -56,7 +56,7 @@ export class Conversation {
     pinnedMessages?: { messageId: Types.ObjectId; content?: string; pinnedBy?: Types.ObjectId; pinnedAt?: Date }[];
 
     @Prop({ type: String, default: 'default' })
-    themeColor?: string;
+    theme?: string;
 
     @Prop({ type: Types.ObjectId, ref: 'User' })
     createdBy: Types.ObjectId;

@@ -1,12 +1,12 @@
-import { Injectable } from "@nestjs/common";
+import { forwardRef, Inject, Injectable } from "@nestjs/common";
 import { InjectModel } from "@nestjs/mongoose";
 import { Model, Types } from "mongoose";
 import { Message, MessageDocument } from "./schemas/message.schema/message.schema";
 import { Conversation, ConversationDocument } from "../conversation/schemas/conversation.schema/conversation.schema";
 import { ApiResponseDto } from "src/common/dtos/api-response.dto";
-import { CloudinaryService } from "src/common/cloudinary/cloudinary.service";
 import { Reaction } from "src/common/enums/reaction.enum";
-import { extractCloudinaryPublicId } from "src/common/functions/extract-cloudinary-public-id";
+import { MessageGateway } from "./message.gateway";
+import { User, UserDocument } from "../user/schemas/user.schema/user.schema";
 
 @Injectable()
 export class MessageService {
@@ -15,7 +15,10 @@ export class MessageService {
         private readonly messageModel: Model<MessageDocument>,
         @InjectModel(Conversation.name)
         private readonly conversationModel: Model<ConversationDocument>,
-        private cloudinaryService: CloudinaryService
+        @InjectModel(User.name)
+        private readonly userModel: Model<UserDocument>,
+        @Inject(forwardRef(() => MessageGateway))
+        private readonly messageGateway: MessageGateway,
     ) { }
 
     async create(messageData: Partial<Message>) {
@@ -106,22 +109,28 @@ export class MessageService {
             if (lastMsg) {
                 try {
                     const senderRef = lastMsg.senderId && (lastMsg.senderId._id ? lastMsg.senderId._id : lastMsg.senderId);
+                    const lastMessageObj = {
+                        _id: lastMsg._id,
+                        content: lastMsg.content || '',
+                        mediaUrls: lastMsg.mediaUrls || [],
+                        senderId: senderRef,
+                        type: lastMsg.type || 'text',
+                        sentAt: lastMsg.sentAt || new Date()
+                    };
                     await this.conversationModel.findByIdAndUpdate(
                         String(lastMsg.conversationId),
                         {
                             lastMessageId: lastMsg._id,
-                            lastMessage: {
-                                _id: lastMsg._id,
-                                content: lastMsg.content || '',
-                                mediaUrls: lastMsg.mediaUrls || [],
-                                senderId: senderRef,
-                                type: lastMsg.type || 'text',
-                                sentAt: lastMsg.sentAt || new Date(),
-                            }
+                            lastMessage: lastMessageObj,
                         },
                         { new: true }
                     ).exec();
-                } catch (e) { }
+
+                    // broadcast lastmessage updated to participants
+                    try {
+                        await this.messageGateway.broadcastConversationLastMessageUpdated(String(lastMsg.conversationId), lastMessageObj);
+                    } catch (error: any) { }
+                } catch (error: any) { }
             }
 
             return normalized.length === 1 ? normalized[0] : normalized;
@@ -153,19 +162,24 @@ export class MessageService {
                         const senderRef = (updatedMsg.senderId && (updatedMsg.senderId as any)._id)
                             ? (updatedMsg.senderId as any)._id
                             : updatedMsg.senderId;
+                        const lastMessageObj = {
+                            _id: updatedMsg._id,
+                            content: 'Message deleted',
+                            mediaUrls: updatedMsg.mediaUrls || [],
+                            senderId: senderRef,
+                            type: updatedMsg.type || 'text',
+                            sentAt: updatedMsg.sentAt || new Date(),
+                            isHideAll: true
+                        };
 
                         await this.conversationModel.findByIdAndUpdate(convId, {
                             lastMessageId: updatedMsg._id,
-                            lastMessage: {
-                                _id: updatedMsg._id,
-                                content: 'Đã thu hồi một tin nhắn',
-                                mediaUrls: updatedMsg.mediaUrls || [],
-                                senderId: senderRef,
-                                type: updatedMsg.type || 'text',
-                                sentAt: updatedMsg.sentAt || new Date(),
-                                isHideAll: true
-                            }
+                            lastMessage: lastMessageObj,
                         }).exec();
+
+                        try {
+                            await this.messageGateway.broadcastConversationLastMessageUpdated(String(updatedMsg.conversationId), lastMessageObj);
+                        } catch (error: any) { }
                     }
                 } catch (e) { }
 
@@ -247,9 +261,240 @@ export class MessageService {
                 .populate({ path: "reactions.userId", select: "fullName username avatarUrl" })
                 .exec();
 
+            if (updated) {
+                try {
+                    const actorReact = (updated.reactions || []).find((r: any) => {
+                        const rid = r.userId?._id ? String(r.userId._id) : String(r.userId);
+                        return rid === String(userId);
+                    });
+
+                    let actorName = 'Someone';
+                    if (actorReact && actorReact.userId) {
+                        const u = actorReact.userId as any;
+                        actorName = (u.fullName || u.username) ? (u.fullName || u.username) : actorName;
+                    }
+
+                    let rawContent = String(updated.content || '').replace(/\s+/g, ' ').trim();
+                    if (!rawContent) {
+                        if (Array.isArray(updated.mediaUrls) && updated.mediaUrls.length > 0) {
+                            rawContent = updated.type === 'video' ? 'a video' : 'a photo';
+                        } else {
+                            rawContent = '';
+                        }
+                    }
+
+                    const PREVIEW_MAX = 120;
+                    let preview = rawContent;
+                    if (preview.length > PREVIEW_MAX) preview = preview.slice(0, PREVIEW_MAX) + '...';
+
+                    const reactionText = `${actorName} reacted to "${preview}"`;
+
+                    // update conversation lastMessage
+                    try {
+                        const senderRef = updated.senderId && (updated.senderId as any)._id ? (updated.senderId as any)._id : updated.senderId;
+                        const lastMessageObj = {
+                            _id: updated._id,
+                            content: reactionText,
+                            mediaUrls: updated.mediaUrls || [],
+                            senderId: senderRef,
+                            type: 'system',
+                            sentAt: new Date()
+                        };
+                        await this.conversationModel.findByIdAndUpdate(
+                            String(updated.conversationId),
+                            {
+                                lastMessageId: updated._id,
+                                lastMessage: lastMessageObj,
+                            },
+                            { new: true }
+                        ).exec();
+                        try {
+                            await this.messageGateway.broadcastConversationLastMessageUpdated(String(updated.conversationId), lastMessageObj);
+                        } catch (error: any) { }
+                    } catch (e) {
+                        console.warn('Failed to update conversation.lastMessage after react', e);
+                    }
+                } catch (e) { }
+            }
+
             return new ApiResponseDto({ message: updated, action: 'added', type }, "reaction added", true);
         } catch (error: any) {
             return new ApiResponseDto(null, error.message || "reaction failed", false, "reaction failed");
+        }
+    }
+
+    async pin(messageId: string, userId: string) {
+        try {
+            const msg: any = await this.messageModel.findById(messageId)
+                .populate('senderId', 'username fullName avatarUrl')
+                .exec();
+            if (!msg) return new ApiResponseDto(null, "message not found", false, "message not found");
+
+            const conv: any = await this.conversationModel.findById(msg.conversationId).exec();
+            if (!conv) return new ApiResponseDto(null, "conversation not found", false, "conversation not found");
+
+            // participant check
+            if (!conv.participantIds.map((p: any) => String(p)).includes(String(userId))) {
+                return new ApiResponseDto(null, "unauthorized", false, "You are not a participant");
+            }
+
+            if (msg.isPinned) {
+                return new ApiResponseDto({ id: messageId, conversationId: String(msg.conversationId) }, "message already pinned", true);
+            }
+
+            // set isPinned
+            await this.messageModel.findByIdAndUpdate(messageId, { $set: { isPinned: true } }).exec();
+
+            const senderDoc: any = msg.senderId && typeof msg.senderId === 'object' ? msg.senderId : null;
+            const senderObj = {
+                id: senderDoc && (senderDoc._id ? senderDoc._id : senderDoc) ? (senderDoc._id ?? senderDoc) : undefined,
+                username: senderDoc?.username ?? '',
+                fullName: senderDoc?.fullName ?? '',
+                avatarUrl: senderDoc?.avatarUrl ?? '',
+            };
+
+            const pinnedObj: any = {
+                messageId: msg._id,
+                content: msg.content || '',
+                pinnedBy: new Types.ObjectId(userId),
+                pinnedAt: new Date(),
+                sender: {
+                    id: senderObj.id ? new Types.ObjectId(String(senderObj.id)) : undefined,
+                    username: senderObj.username,
+                    fullName: senderObj.fullName,
+                    avatarUrl: senderObj.avatarUrl,
+                }
+            };
+
+            // add to conversation
+            await this.conversationModel.findByIdAndUpdate(
+                conv._id,
+                { $addToSet: { pinnedMessages: pinnedObj } }
+            ).exec();
+
+            try {
+                const previewRaw = String(msg.content || '').replace(/\s+/g, ' ').trim() || (msg.mediaUrls && msg.mediaUrls.length ? (msg.type === 'video' ? 'a video' : 'a photo') : '');
+                const PREVIEW_MAX = 120;
+                let preview = previewRaw;
+                if (preview.length > PREVIEW_MAX) preview = preview.slice(0, PREVIEW_MAX) + '...';
+
+                const actorName = senderObj.fullName || senderObj.username || "Someone";
+                const pinText = `${actorName} pinned a message.`;
+
+                const sysMd: Partial<any> = {
+                    conversationId: msg.conversationId,
+                    senderId: new Types.ObjectId(String(userId)),
+                    content: pinText,
+                    type: 'system',
+                    sentAt: new Date(),
+                };
+
+                const systemMsg = await this.messageModel.create(sysMd);
+                const lastMessageObj = {
+                    _id: systemMsg._id,
+                    content: sysMd.content,
+                    mediaUrls: [],
+                    senderId: sysMd.senderId,
+                    type: 'system',
+                    sentAt: sysMd.sentAt,
+                };
+
+                // update conversation last message
+                try {
+                    await this.conversationModel.findByIdAndUpdate(
+                        conv._id,
+                        {
+                            lastMessageId: systemMsg._id,
+                            lastMessage: lastMessageObj,
+                        },
+                        { new: true }
+                    ).exec();
+                } catch (e) { }
+
+                try {
+                    await this.messageGateway.broadcastMessageCreated(String(msg.conversationId), systemMsg);
+                } catch (e) { }
+
+                try {
+                    await this.messageGateway.broadcastConversationLastMessageUpdated(String(msg.conversationId), lastMessageObj);
+                } catch (e) { }
+            } catch (e) { }
+
+            return new ApiResponseDto({ id: messageId, conversationId: String(msg.conversationId) }, "message pinned successfully", true);
+        } catch (error: any) {
+            return new ApiResponseDto(null, error.message || "pin failed", false, "pin failed");
+        }
+    }
+
+    async unpin(messageId: string, userId: string) {
+        try {
+            const msg: any = await this.messageModel.findById(messageId).exec();
+            if (!msg) return new ApiResponseDto(null, "message not found", false, "message not found");
+
+            const conv: any = await this.conversationModel.findById(msg.conversationId).exec();
+            if (!conv) return new ApiResponseDto(null, "conversation not found", false, "conversation not found");
+
+            // participant check
+            if (!conv.participantIds.map((p: any) => String(p)).includes(String(userId))) {
+                return new ApiResponseDto(null, "unauthorized", false, "You are not a participant");
+            }
+
+            if (!msg.isPinned) {
+                return new ApiResponseDto({ id: messageId, conversationId: String(msg.conversationId) }, "message not pinned", true);
+            }
+
+            await this.messageModel.findByIdAndUpdate(messageId, { $set: { isPinned: false } }).exec();
+
+            await this.conversationModel.findByIdAndUpdate(
+                conv._id,
+                { $pull: { pinnedMessages: { messageId: new Types.ObjectId(messageId) } } }
+            ).exec();
+
+            try {
+                const user = await this.userModel.findById(userId).lean().exec();
+                const displayName = user ? (user.fullName || user.username || 'Someone') : 'Someone';
+
+                const sysMd: Partial<any> = {
+                    conversationId: msg.conversationId,
+                    senderId: new Types.ObjectId(String(userId)),
+                    content: `${displayName} unpinned a message.`,
+                    type: 'system',
+                    sentAt: new Date(),
+                };
+
+                const systemMsg = await this.messageModel.create(sysMd);
+                const lastMessageObj = {
+                    _id: systemMsg._id,
+                    content: sysMd.content,
+                    mediaUrls: [],
+                    senderId: sysMd.senderId,
+                    type: 'system',
+                    sentAt: sysMd.sentAt,
+                };
+
+                try {
+                    await this.conversationModel.findByIdAndUpdate(
+                        conv._id,
+                        {
+                            lastMessageId: systemMsg._id,
+                            lastMessage: lastMessageObj,
+                        },
+                        { new: true }
+                    ).exec();
+                } catch (e) { }
+
+                try {
+                    await this.messageGateway.broadcastMessageCreated(String(msg.conversationId), systemMsg);
+                } catch (e) { }
+
+                try {
+                    await this.messageGateway.broadcastConversationLastMessageUpdated(String(msg.conversationId), lastMessageObj);
+                } catch (e) { }
+            } catch (e) { }
+
+            return new ApiResponseDto({ id: messageId, conversationId: String(msg.conversationId) }, "message unpinned", true);
+        } catch (error: any) {
+            return new ApiResponseDto(null, error.message || "unpin failed", false, "unpin failed");
         }
     }
 

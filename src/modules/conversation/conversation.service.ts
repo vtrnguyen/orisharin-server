@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { forwardRef, Inject, Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Conversation, ConversationDocument } from './schemas/conversation.schema/conversation.schema';
@@ -17,7 +17,9 @@ export class ConversationService {
         @InjectModel(User.name)
         private readonly userModel: Model<UserDocument>,
         private cloudinaryService: CloudinaryService,
+        @Inject(forwardRef(() => MessageService))
         private messageService: MessageService,
+        @Inject(forwardRef(() => MessageGateway))
         private messageGateway: MessageGateway,
     ) { }
 
@@ -163,7 +165,7 @@ export class ConversationService {
                 const created = await this.messageService.create(md);
 
                 if (created) {
-                    await this.messageGateway.broadcastMessageToConversation(conversationId, created);
+                    await this.messageGateway.broadcastMessageCreated(conversationId, created);
                 }
             } catch (error: any) {
                 console.warn("failed to create/broadcast system message for conversation avatar change", error);
@@ -212,7 +214,7 @@ export class ConversationService {
                 const created = await this.messageService.create(md);
 
                 if (created) {
-                    await this.messageGateway.broadcastMessageToConversation(conversationId, created);
+                    await this.messageGateway.broadcastMessageCreated(conversationId, created);
                 }
             } catch (error: any) {
                 console.warn("failed to create/broadcast system message for conversation rename", error);
@@ -261,7 +263,7 @@ export class ConversationService {
 
                 const created = await this.messageService.create(md);
                 if (created) {
-                    await this.messageGateway.broadcastMessageToConversation(String(conv._id), created);
+                    await this.messageGateway.broadcastMessageCreated(String(conv._id), created);
                 }
             } catch (err: any) {
                 console.warn('failed to create/broadcast system message for theme change', err);
@@ -361,7 +363,7 @@ export class ConversationService {
                 };
 
                 const created = await this.messageService.create(md);
-                await this.messageGateway.broadcastMessageToConversation(conversationId, created);
+                await this.messageGateway.broadcastMessageCreated(conversationId, created);
             } catch (error: any) {
                 console.warn("failed to create/broadcast system message for adding participants", error);
             }
@@ -476,7 +478,7 @@ export class ConversationService {
 
                 const created = await this.messageService.create(md);
                 if (created) {
-                    await this.messageGateway.broadcastMessageToConversation(conversationId, created);
+                    await this.messageGateway.broadcastMessageCreated(conversationId, created);
                 }
             } catch (err: any) {
                 console.warn('failed to create/broadcast system message for removed participants', err);
@@ -550,7 +552,7 @@ export class ConversationService {
 
                 const created = await this.messageService.create(md as any);
                 if (created) {
-                    await this.messageGateway.broadcastMessageToConversation(conversationId, created);
+                    await this.messageGateway.broadcastMessageCreated(conversationId, created);
                 }
             } catch (err: any) {
                 console.warn('failed to create/broadcast system message for leaving conversation', err);

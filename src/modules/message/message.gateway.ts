@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { forwardRef, Inject, Injectable } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 import { OnGatewayConnection, OnGatewayDisconnect, SubscribeMessage, WebSocketGateway, WebSocketServer } from "@nestjs/websockets";
 import { Server, Socket } from "socket.io";
@@ -13,6 +13,7 @@ export class MessageGateway implements OnGatewayConnection, OnGatewayDisconnect 
     private userSockets = new Map<string, Set<string>>();
 
     constructor(
+        @Inject(forwardRef(() => MessageService))
         private readonly messageService: MessageService,
         private readonly jwtService: JwtService
     ) { }
@@ -102,7 +103,7 @@ export class MessageGateway implements OnGatewayConnection, OnGatewayDisconnect 
         }
     }
 
-    public async broadcastMessageToConversation(conversationId: string, message: any) {
+    public async broadcastMessageCreated(conversationId: string, message: any) {
         const participantIds = await this.messageService.getParticipants(conversationId);
 
         const messages = Array.isArray(message) ? message : [message];
@@ -152,6 +153,23 @@ export class MessageGateway implements OnGatewayConnection, OnGatewayDisconnect 
                     this.server.to(sid).emit("message:reacted", payload);
                 }
             }
+        }
+    }
+
+    public async broadcastConversationLastMessageUpdated(conversationId: string, lastMessage: any) {
+        try {
+            const participantIds = await this.messageService.getParticipants(conversationId);
+            const payload = { conversationId, lastMessage };
+            for (const pid of participantIds) {
+                const sockets = this.userSockets.get(String(pid));
+                if (sockets) {
+                    for (const sid of sockets) {
+                        this.server.to(sid).emit('conversation:lastMessageUpdated', payload);
+                    }
+                }
+            }
+        } catch (error: any) {
+            console.warn('broadcastConversationLastMessageUpdated failed', error);
         }
     }
 }

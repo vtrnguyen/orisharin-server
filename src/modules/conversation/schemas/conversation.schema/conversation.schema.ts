@@ -21,6 +21,12 @@ const PinnedMessageSchema = new MongooseSchema(
         content: { type: String, default: '' },
         pinnedBy: { type: Types.ObjectId, ref: 'User', required: false },
         pinnedAt: { type: Date, default: Date.now },
+        sender: {
+            id: { type: Types.ObjectId, ref: 'User', required: false },
+            username: { type: String, default: '' },
+            fullName: { type: String, default: '' },
+            avatarUrl: { type: String, default: '' },
+        },
     },
     { _id: false }
 );
@@ -53,7 +59,13 @@ export class Conversation {
     } | null;
 
     @Prop({ type: [PinnedMessageSchema], default: [] })
-    pinnedMessages?: { messageId: Types.ObjectId; content?: string; pinnedBy?: Types.ObjectId; pinnedAt?: Date }[];
+    pinnedMessages?: {
+        messageId: Types.ObjectId;
+        content?: string;
+        pinnedBy?: Types.ObjectId;
+        pinnedAt?: Date;
+        sender?: { id?: Types.ObjectId; username?: string; fullName?: string; avatarUrl?: string };
+    }[];
 
     @Prop({ type: String, default: 'default' })
     theme?: string;

@@ -1,4 +1,4 @@
-name: Deploy OriSharin Backend
+name: Deploy Backend
 
 on:
   push:
@@ -10,7 +10,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Deploy & Restart on VPS
+      - name: Deploy on VPS
         uses: appleboy/ssh-action@v0.1.10
         with:
           host: ${{ secrets.VPS_HOST }}
@@ -20,10 +20,11 @@ jobs:
           script: |
             cd /home/orisharin/apps/backend
             
-            # Pull latest code
+            # Use HTTPS token for git pull
+            git config --global url."https://${{ secrets.GH_TOKEN }}@github.com/".insteadOf "https://github.com/"
             git pull origin main || (git fetch && git reset --hard origin/main && git clean -fd)
 
-            # Create .env from GitHub Secrets
+            # Create .env from Secrets
             cat > .env << 'EOF'
             NODE_ENV=production
             PORT=3000
@@ -37,12 +38,8 @@ jobs:
             TRANSLATE_API_KEY=${{ secrets.TRANSLATE_API_KEY }}
             EOF
 
-            # Install & build
             npm ci --production
             npm run build
-
-            # Restart PM2 (handles both dist/main.js and dist/src/main.js cases)
             pm2 restart orisharin-api || pm2 start dist/src/main.js --name "orisharin-api"
             pm2 save
-            
             echo "Backend deployed successfully!"

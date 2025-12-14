@@ -9,6 +9,7 @@ import { JwtModule } from "@nestjs/jwt";
 import { ConfigModule, ConfigService } from "@nestjs/config";
 import { CloudinaryModule } from "src/common/cloudinary/cloudinary.module";
 import { ConversationModule } from "../conversation/conversation.module";
+import { User, UserSchema } from "../user/schemas/user.schema/user.schema";
 
 @Module({
     imports: [
@@ -16,6 +17,7 @@ import { ConversationModule } from "../conversation/conversation.module";
         MongooseModule.forFeature([
             { name: Message.name, schema: MessageSchema },
             { name: Conversation.name, schema: ConversationSchema },
+            { name: User.name, schema: UserSchema },
         ]),
         JwtModule.registerAsync({
             imports: [ConfigModule],

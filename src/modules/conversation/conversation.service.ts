@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { forwardRef, Inject, Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Conversation, ConversationDocument } from './schemas/conversation.schema/conversation.schema';
@@ -17,7 +17,9 @@ export class ConversationService {
         @InjectModel(User.name)
         private readonly userModel: Model<UserDocument>,
         private cloudinaryService: CloudinaryService,
+        @Inject(forwardRef(() => MessageService))
         private messageService: MessageService,
+        @Inject(forwardRef(() => MessageGateway))
         private messageGateway: MessageGateway,
     ) { }
 
@@ -163,7 +165,7 @@ export class ConversationService {
                 const created = await this.messageService.create(md);
 
                 if (created) {
-                    await this.messageGateway.broadcastMessageToConversation(conversationId, created);
+                    await this.messageGateway.broadcastMessageCreated(conversationId, created);
                 }
             } catch (error: any) {
                 console.warn("failed to create/broadcast system message for conversation avatar change", error);
@@ -212,7 +214,7 @@ export class ConversationService {
                 const created = await this.messageService.create(md);
 
                 if (created) {
-                    await this.messageGateway.broadcastMessageToConversation(conversationId, created);
+                    await this.messageGateway.broadcastMessageCreated(conversationId, created);
                 }
             } catch (error: any) {
                 console.warn("failed to create/broadcast system message for conversation rename", error);
@@ -227,6 +229,55 @@ export class ConversationService {
             return new ApiResponseDto({ conversation: populated }, "name updated successfully", true);
         } catch (error: any) {
             return new ApiResponseDto(null, error.message, false, "update name failed");
+        }
+    }
+
+    async updateTheme(conversationId: string, theme: string, userId: string) {
+        try {
+            if (!theme || String(theme).trim() === "") {
+                return new ApiResponseDto(null, "theme is required", false, "bad request");
+            }
+
+            const conv: any = await this.conversationModel.findById(conversationId).exec();
+            if (!conv) return new ApiResponseDto(null, "conversation not found", false, "conversation not found");
+
+            // verify participant
+            const isParticipant = (conv.participantIds || []).map((p: any) => String(p)).includes(String(userId));
+            if (!isParticipant) return new ApiResponseDto(null, "unauthorized", false, "you are not a participant of this conversation");
+
+            conv.theme = String(theme).trim();
+            await conv.save();
+
+            // create a system message to announce theme change
+            try {
+                const user = await this.userModel.findById(userId).lean().exec();
+                const displayName = user ? (user.fullName || user.username || 'Someone') : 'Someone';
+
+                const md: Partial<any> = {
+                    conversationId: conv._id,
+                    senderId: new Types.ObjectId(String(userId)),
+                    content: `${displayName} changed the conversation theme to "${conv.theme}".`,
+                    type: 'system',
+                    sentAt: new Date(),
+                };
+
+                const created = await this.messageService.create(md);
+                if (created) {
+                    await this.messageGateway.broadcastMessageCreated(String(conv._id), created);
+                }
+            } catch (err: any) {
+                console.warn('failed to create/broadcast system message for theme change', err);
+            }
+
+            const populated = await this.conversationModel
+                .findById(conv._id)
+                .populate('participantIds', 'username fullName avatarUrl')
+                .lean()
+                .exec();
+
+            return new ApiResponseDto({ conversation: populated }, "theme updated successfully", true);
+        } catch (error: any) {
+            return new ApiResponseDto(null, error.message, false, "update theme failed");
         }
     }
 
@@ -312,7 +363,7 @@ export class ConversationService {
                 };
 
                 const created = await this.messageService.create(md);
-                await this.messageGateway.broadcastMessageToConversation(conversationId, created);
+                await this.messageGateway.broadcastMessageCreated(conversationId, created);
             } catch (error: any) {
                 console.warn("failed to create/broadcast system message for adding participants", error);
             }
@@ -427,7 +478,7 @@ export class ConversationService {
 
                 const created = await this.messageService.create(md);
                 if (created) {
-                    await this.messageGateway.broadcastMessageToConversation(conversationId, created);
+                    await this.messageGateway.broadcastMessageCreated(conversationId, created);
                 }
             } catch (err: any) {
                 console.warn('failed to create/broadcast system message for removed participants', err);
@@ -501,7 +552,7 @@ export class ConversationService {
 
                 const created = await this.messageService.create(md as any);
                 if (created) {
-                    await this.messageGateway.broadcastMessageToConversation(conversationId, created);
+                    await this.messageGateway.broadcastMessageCreated(conversationId, created);
                 }
             } catch (err: any) {
                 console.warn('failed to create/broadcast system message for leaving conversation', err);

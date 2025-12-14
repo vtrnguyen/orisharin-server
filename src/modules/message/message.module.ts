@@ -10,6 +10,7 @@ import { ConfigModule, ConfigService } from "@nestjs/config";
 import { CloudinaryModule } from "src/common/cloudinary/cloudinary.module";
 import { ConversationModule } from "../conversation/conversation.module";
 import { User, UserSchema } from "../user/schemas/user.schema/user.schema";
+import { UserModule } from "../user/user.module";
 
 @Module({
     imports: [
@@ -31,6 +32,7 @@ import { User, UserSchema } from "../user/schemas/user.schema/user.schema";
         }),
         forwardRef(() => ConversationModule),
         CloudinaryModule,
+        UserModule,
     ],
     controllers: [MessageController],
     providers: [MessageService, MessageGateway],

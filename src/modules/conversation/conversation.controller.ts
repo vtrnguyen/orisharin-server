@@ -81,6 +81,17 @@ export class ConversationController {
         return this.conversationService.updateTheme(id, theme, user.userId);
     }
 
+    @Patch(":id/quick-emoji")
+    @UseGuards(JwtAuthGuard)
+    async updateQuickEmoji(
+        @Param("id") id: string,
+        @Body() body: { quickEmoji: string },
+        @CurrentUser() user: any
+    ) {
+        const quickEmoji = body?.quickEmoji ?? '';
+        return this.conversationService.updateQuickEmoji(id, quickEmoji, user.userId);
+    }
+
     @Patch(":id/participants")
     @UseGuards(JwtAuthGuard)
     async addParticipants(

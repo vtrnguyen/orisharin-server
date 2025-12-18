@@ -242,7 +242,7 @@ export class ConversationService {
             if (!conv) return new ApiResponseDto(null, "conversation not found", false, "conversation not found");
 
             // verify participant
-            const isParticipant = (conv.participantIds || []).map((p: any) => String(p)).includes(String(userId));
+            const isParticipant = this.messageService.isParticipant(conv, userId);
             if (!isParticipant) return new ApiResponseDto(null, "unauthorized", false, "you are not a participant of this conversation");
 
             conv.theme = String(theme).trim();
@@ -278,6 +278,55 @@ export class ConversationService {
             return new ApiResponseDto({ conversation: populated }, "theme updated successfully", true);
         } catch (error: any) {
             return new ApiResponseDto(null, error.message, false, "update theme failed");
+        }
+    }
+
+    async updateQuickEmoji(conversationId: string, quickEmoji: string, userId: string) {
+        try {
+            if (!quickEmoji || String(quickEmoji).trim() === "") {
+                return new ApiResponseDto(null, "quickEmoji is required", false, "bad request");
+            }
+
+            const conv: any = await this.conversationModel.findById(conversationId).exec();
+            if (!conv) return new ApiResponseDto(null, "conversation not found", false, "conversation not found");
+
+            // verify participant
+            const isParticipant = this.messageService.isParticipant(conv, userId);
+            if (!isParticipant) return new ApiResponseDto(null, "unauthorized", false, "you are not a participant of this conversation");
+
+            conv.quickEmoji = String(quickEmoji).trim();
+            await conv.save();
+
+            // create a system message to announce quickEmoji change
+            try {
+                const user = await this.userModel.findById(userId).lean().exec();
+                const displayName = user ? (user.fullName || user.username || 'Someone') : 'Someone';
+
+                const md: Partial<any> = {
+                    conversationId: conv._id,
+                    senderId: new Types.ObjectId(String(userId)),
+                    content: `${displayName} changed the conversation quickEmoji to "${conv.quickEmoji}".`,
+                    type: 'system',
+                    sentAt: new Date(),
+                };
+
+                const created = await this.messageService.create(md);
+                if (created) {
+                    await this.messageGateway.broadcastMessageCreated(String(conv._id), created);
+                }
+            } catch (err: any) {
+                console.warn('failed to create/broadcast system message for quickEmoji change', err);
+            }
+
+            const populated = await this.conversationModel
+                .findById(conv._id)
+                .populate('participantIds', 'username fullName avatarUrl')
+                .lean()
+                .exec();
+
+            return new ApiResponseDto({ conversation: populated }, "quickEmoji updated successfully", true);
+        } catch (error: any) {
+            return new ApiResponseDto(null, error.message, false, "update quickEmoji failed");
         }
     }
 

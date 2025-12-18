@@ -3,6 +3,7 @@ import { JwtService } from "@nestjs/jwt";
 import { OnGatewayConnection, OnGatewayDisconnect, SubscribeMessage, WebSocketGateway, WebSocketServer } from "@nestjs/websockets";
 import { Server, Socket } from "socket.io";
 import { MessageService } from "./message.service";
+import { UserService } from "../user/user.service";
 
 @WebSocketGateway({ cors: { origin: '*' }, namespace: "/" })
 @Injectable()
@@ -15,7 +16,8 @@ export class MessageGateway implements OnGatewayConnection, OnGatewayDisconnect 
     constructor(
         @Inject(forwardRef(() => MessageService))
         private readonly messageService: MessageService,
-        private readonly jwtService: JwtService
+        private readonly jwtService: JwtService,
+        private readonly userService: UserService,
     ) { }
 
     handleConnection(client: any, ...args: any[]) {
@@ -98,6 +100,69 @@ export class MessageGateway implements OnGatewayConnection, OnGatewayDisconnect 
             if (sockets) {
                 for (const sid of sockets) {
                     this.server.to(sid).emit('message:created', result);
+                }
+            }
+        }
+    }
+
+    @SubscribeMessage('typing:start')
+    async handleTypingStart(client: Socket, payload: { conversationId: string }) {
+        const userId = client.data.userId;
+        if (!userId || !payload.conversationId) {
+            return;
+        }
+
+        const allowed = await this.messageService.isParticipant(payload.conversationId, userId);
+        if (!allowed) return;
+
+        const userResponse = await this.userService.findByIdOrUsername(userId);
+        const user = userResponse?.data?.user;
+        const participantIds = await this.messageService.getParticipants(payload.conversationId);
+
+        for (const pid of participantIds) {
+            if (pid.toString() === userId) continue;
+
+            const sockets = this.userSockets.get(pid.toString());
+
+            if (sockets) {
+                for (const sid of sockets) {
+                    this.server.to(sid).emit('typing:update', {
+                        conversationId: payload.conversationId,
+                        userId,
+                        user: user ? {
+                            id: user._id,
+                            fullName: user.fullName,
+                            username: user.username,
+                            avatarUrl: user.avatarUrl,
+                        } : { id: userId },
+                        isTyping: true
+                    });
+                }
+            }
+        }
+    }
+
+    @SubscribeMessage('typing:stop')
+    async handleTypingStop(client: Socket, payload: { conversationId: string }) {
+        const userId = client.data.userId;
+        if (!userId || !payload.conversationId) return;
+
+        const allowed = await this.messageService.isParticipant(payload.conversationId, userId);
+        if (!allowed) return;
+
+        const participantIds = await this.messageService.getParticipants(payload.conversationId);
+
+        for (const pid of participantIds) {
+            if (pid.toString() === userId) continue;
+
+            const sockets = this.userSockets.get(pid.toString());
+            if (sockets) {
+                for (const sid of sockets) {
+                    this.server.to(sid).emit('typing:update', {
+                        conversationId: payload.conversationId,
+                        userId,
+                        isTyping: false
+                    });
                 }
             }
         }

@@ -70,7 +70,7 @@ export class Conversation {
     @Prop({ type: String, default: 'default' })
     theme?: string;
 
-    @Prop({ type: String, default: '❤️' })
+    @Prop({ type: String, default: '👍' })
     quickEmoji?: string;
 
     @Prop({ type: Types.ObjectId, ref: 'User' })

@@ -106,14 +106,14 @@ export class PostService {
         try {
             const skip = (page - 1) * limit;
             const posts = await this.postModel
-                .find({ isDeleted: false })
+                .find({ isDeleted: false, privacy: 'public' })
                 .populate("authorId")
                 .sort({ createdAt: -1 })
                 .skip(skip)
                 .limit(limit)
                 .exec();
 
-            const total = await this.postModel.countDocuments({ isDeleted: false });
+            const total = await this.postModel.countDocuments({ isDeleted: false, privacy: 'public' });
 
             // collect referenced post ids (sharedFromPostId or originalPostId)
             const referencedIds = new Set<string>();
@@ -195,37 +195,6 @@ export class PostService {
         }
     }
 
-    async findByUsername(username: string) {
-        const user = await this.userModel.findOne({ username }).exec();
-        if (!user) return [];
-        const posts = await this.postModel
-            .find({ authorId: user._id })
-            .populate("authorId")
-            .sort({ createdAt: -1 })
-            .exec();
-
-        return posts.map(post => {
-            const userObj = post.authorId && typeof post.authorId === 'object'
-                ? {
-                    id: (post.authorId as any)._id,
-                    username: (post.authorId as any).username,
-                    fullName: (post.authorId as any).fullName,
-                    avatarUrl: (post.authorId as any).avatarUrl,
-                }
-                : null;
-
-            const { authorId, ...postData } = post.toObject();
-
-            return {
-                post: {
-                    ...postData,
-                    id: post._id,
-                },
-                author: userObj,
-            };
-        });
-    }
-
     async findAllByUserPaginated(username: string, page = 1, limit = 10) {
         try {
             const user = await this.userModel.findOne({ username }).exec();
@@ -236,14 +205,14 @@ export class PostService {
 
             const skip = (page - 1) * limit;
             const posts = await this.postModel
-                .find({ authorId: user._id, isDeleted: false })
+                .find({ authorId: user._id, isDeleted: false, privacy: 'public' })
                 .populate("authorId")
                 .sort({ createdAt: -1 })
                 .skip(skip)
                 .limit(limit)
                 .exec();
 
-            const total = await this.postModel.countDocuments({ authorId: user._id, isDeleted: false });
+            const total = await this.postModel.countDocuments({ authorId: user._id, isDeleted: false, privacy: 'public' });
 
             // collect referenced post ids
             const referencedIds = new Set<string>();

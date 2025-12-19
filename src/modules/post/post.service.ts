@@ -55,7 +55,9 @@ export class PostService {
             sharedFromPostId: body.sharedFromPostId ? new Types.ObjectId(body.sharedFromPostId) : undefined,
         });
 
-        return post.save();
+        post.save();
+
+        return new ApiResponseDto(post, "Post created successfully", true);
     }
 
     async delete(postId: string, currentUserId: string) {
